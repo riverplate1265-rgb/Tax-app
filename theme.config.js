@@ -1,14 +1,17 @@
 /** @type {const} */
 const themeColors = {
-  primary: { light: '#0a7ea4', dark: '#0a7ea4' },
-  background: { light: '#ffffff', dark: '#151718' },
-  surface: { light: '#f5f5f5', dark: '#1e2022' },
-  foreground: { light: '#11181C', dark: '#ECEDEE' },
-  muted: { light: '#687076', dark: '#9BA1A6' },
-  border: { light: '#E5E7EB', dark: '#334155' },
-  success: { light: '#22C55E', dark: '#4ADE80' },
-  warning: { light: '#F59E0B', dark: '#FBBF24' },
-  error: { light: '#EF4444', dark: '#F87171' },
+  primary: { light: '#1A6FD4', dark: '#4A9EF8' },
+  background: { light: '#F2F5FA', dark: '#0F1923' },
+  surface: { light: '#FFFFFF', dark: '#1A2535' },
+  foreground: { light: '#0D1B2A', dark: '#E8EDF5' },
+  muted: { light: '#5E7491', dark: '#8BA3BF' },
+  border: { light: '#D8E3EF', dark: '#2A3D55' },
+  success: { light: '#0FA86E', dark: '#2FD48E' },
+  warning: { light: '#E07B2A', dark: '#F5A855' },
+  error: { light: '#D63B3B', dark: '#F07070' },
+  chartSocial: { light: '#F5A623', dark: '#F5A623' },
+  chartTax: { light: '#E05252', dark: '#E05252' },
+  chartTakeHome: { light: '#2ECC71', dark: '#2ECC71' },
 };
 
 module.exports = { themeColors };

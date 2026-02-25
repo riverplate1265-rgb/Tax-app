@@ -28,11 +28,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "手取り計算アプリ",
+  appName: "手取り計算",
   appSlug: "tax-calculator-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "https://private-us-east-1.manuscdn.com/sessionFile/tr4v4gADSvsGN1B1qaHFcB/sandbox/MOrw6lTDc8YOCfZ3ny4lnl-img-1_1772004430000_na1fn_dGF4LWNhbGMtaWNvbg.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvdHI0djRnQURTdnNHTjFCMXFhSEZjQi9zYW5kYm94L01Pcnc2bFREYzhZT0NmWjNueTRsbmwtaW1nLTFfMTc3MjAwNDQzMDAwMF9uYTFmbl9kR0Y0TFdOaGJHTXRhV052YmcucG5nP3gtb3NzLXByb2Nlc3M9aW1hZ2UvcmVzaXplLHdfMTkyMCxoXzE5MjAvZm9ybWF0LHdlYnAvcXVhbGl0eSxxXzgwIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzk4NzYxNjAwfX19XX0_&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=t1RrO--6flxhu7EGvJHvnmVn57MP191YqbQ1KkeAavk-ugpe72UAbP4w8ldzegMFGlEutZgs5pKixDwRqeWhmbS577Do8bhfN~8-V5W46wxtO-SH4znLHA6SioD~-F6m8Z1wqvFVXDE0VRNf-zbg5c05AbhjUHu3BDYLruL3dl24XWxBgSDEA2Jt2diMbTvxIaVc00lvqvZ3LdCkjMyOSR4-zfTzsbciPrqqcHpRoefOesls~UEwNUbKUytsC~vEJKCsYvYZJD7ZciVILTz0Cn5cdNyd4lzrDtjYS8ygXv7-Lkh-uwEUFRj42oWsCrRx2mzbWLocbRMPWay67YA1~A__",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,

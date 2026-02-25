@@ -8,6 +8,9 @@ export const themeColors: {
   success: { light: string; dark: string };
   warning: { light: string; dark: string };
   error: { light: string; dark: string };
+  chartSocial: { light: string; dark: string };
+  chartTax: { light: string; dark: string };
+  chartTakeHome: { light: string; dark: string };
 };
 
 declare const themeConfig: {

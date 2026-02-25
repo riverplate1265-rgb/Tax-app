@@ -196,6 +196,9 @@ export default function ResultScreen() {
             • 社会保険料は標準報酬月額で決まります（標準報酬月額: {formatYen(result.standardMonthlyRemuneration)}）
           </Text>
           <Text style={styles.noticeText}>
+            • 賞与にも標準賞与額に対する社会保険料がかかります（標準賞与額: {formatYen(result.standardBonusRemunerationKenpo)}/回、年２回）
+          </Text>
+          <Text style={styles.noticeText}>
             • 住民税は前年所得ベースで計算されます（標準税率10%）
           </Text>
           <Text style={styles.noticeText}>

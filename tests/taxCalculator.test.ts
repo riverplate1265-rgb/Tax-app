@@ -35,13 +35,38 @@ describe("calculateTax", () => {
     expect(result.takeHomeRatio).toBeGreaterThan(0);
     expect(result.takeHomeRatio).toBeLessThan(100);
 
-    // 内訳の合計が年収と一致
+    // 内訳の合計が年収と一致（端数誤差許容）
     const total = result.totalSocialInsurance + result.totalTax + result.takeHome;
-    expect(Math.abs(total - result.annualIncome)).toBeLessThan(100); // 端数誤差許容
+    expect(Math.abs(total - result.annualIncome)).toBeLessThan(100);
   });
 
-  // 40歳以上は介護保険料が発生する
-  it("40歳以上の場合、介護保険料が発生する", () => {
+  // 賞与の社会保険料が正しく計算されているか
+  it("賞与分の社会保険料が月給分に上乗せされている", () => {
+    const result = calculateTax({
+      birthDate: new Date(1990, 0, 1), // 35歳
+      annualIncome: 600,
+      hasSpouseDeduction: false,
+      childrenUnder19: 0,
+      childrenUnder23: 0,
+      prefecture: "東京都",
+    });
+
+    // 月収 = 600万 / 16 = 37.5万円
+    // 標準報酬月額（健康保険）= 380,000円
+    // 月給分健康保険料（東京4.99%）= 380,000 × 0.0499 × 12 = 約227,544円
+    // 賞与1回あたり = 37.5万 × 2 = 75万円 → 標準賞与額 = 750,000円
+    // 賞与分健康保険料 = 750,000 × 0.0499 × 2 = 約74,850円
+    // 合計健康保険料 > 月給のみの計算（227,544円）
+    const monthlyIncome = Math.round(6_000_000 / 16);
+    const monthlyHealthOnly = Math.floor(380_000 * 0.0499) * 12;
+    expect(result.healthInsurance).toBeGreaterThan(monthlyHealthOnly);
+
+    // 標準賞与額が設定されている
+    expect(result.standardBonusRemunerationKenpo).toBeGreaterThan(0);
+  });
+
+  // 40歳以上は介護保険料が発生する（賞与分も含む）
+  it("40歳以上の場合、介護保険料が発生する（賞与分含む）", () => {
     const result40 = calculateTax({
       birthDate: new Date(1985, 0, 1), // 40歳
       annualIncome: 500,
@@ -150,6 +175,22 @@ describe("calculateTax", () => {
       prefecture: "東京都",
     });
     expect(high.takeHomeRatio).toBeLessThan(low.takeHomeRatio);
+  });
+
+  // 厚生年金の標準賞与額上限（150万円）が適用される
+  it("厚生年金の標準賞与額は1回あたり150万円が上限", () => {
+    // 年収3000万円: 月収 = 3000万/16 = 187.5万円、賞与1回 = 375万円
+    // 厚生年金の標準賞与額は150万円が上限
+    const result = calculateTax({
+      birthDate: new Date(1980, 0, 1),
+      annualIncome: 3000,
+      hasSpouseDeduction: false,
+      childrenUnder19: 0,
+      childrenUnder23: 0,
+      prefecture: "東京都",
+    });
+    // 標準賞与額が150万円上限を超えないことを確認
+    expect(result.standardBonusRemunerationNenkin).toBeLessThanOrEqual(1_500_000);
   });
 });
 

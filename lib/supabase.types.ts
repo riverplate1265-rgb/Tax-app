@@ -13,17 +13,15 @@ export type Json =
   | Json[];
 
 // ===== profiles テーブル =====
+// Supabase実テーブル: id, birth_date, work_classification, has_spouse, children_count, is_premium, subscription_status, created_at, updated_at
 export interface Profile {
-  id: string;                        // UUID (auth.users.id と同一)
-  birth_year: number | null;
-  birth_month: number | null;
-  birth_day: number | null;
+  id: string;                                    // UUID (auth.users.id と同一)
+  birth_date: string | null;                     // 生年月日 (YYYY-MM-DD)
   work_classification: WorkClassification | null;
   has_spouse: boolean;
   children_count: number;
   is_premium: boolean;
   subscription_status: SubscriptionStatus;
-  revenuecat_user_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,37 +30,33 @@ export type WorkClassification =
   | "会社員（企業年金なし）"
   | "会社員（企業年金あり）"
   | "公務員"
-  | "自営業・フリーランス"
-  | "その他";
+  | "自営業・フリーランス";
 
 export type SubscriptionStatus = "none" | "active" | "expired" | "trial";
 
 // ===== annual_settings テーブル =====
+// Supabase実テーブル: id, user_id, year, annual_income, monthly_income, bonus_amount,
+//   commuting_allowance, previous_year_income, living_expenses,
+//   ideco_contribution, furusato_nouzei_donation, housing_loan_deduction,
+//   life_insurance_deduction, created_at, updated_at
 export interface AnnualSettings {
   id: string;
   user_id: string;
   year: number;
   // 収入
-  annual_income: number | null;        // 年収（万円）
-  monthly_income: number | null;       // 月収（万円）
-  bonus_amount: number | null;         // 賞与合計（万円）
-  commuting_allowance: number | null;  // 通勤手当（年間・万円）
-  previous_year_income: number | null; // 前年年収（万円）
+  annual_income: number | null;              // 年収（万円）
+  monthly_income: number | null;             // 月収（万円）
+  bonus_amount: number | null;               // 賞与合計（万円）
+  commuting_allowance: number | null;        // 通勤手当（年間・万円）
+  previous_year_income: number | null;       // 前年年収（万円）
   // 生活費
-  living_expenses: number | null;      // 月間生活費（万円）
-  savings_target: number | null;       // 月間貯金目標（万円）
-  // 節税控除
-  ideco_monthly: number | null;        // iDeCo月額掛金（円）
-  furusato_amount: number | null;      // ふるさと納税（年間・円）
-  housing_loan_balance: number | null; // 住宅ローン残高（円）
-  life_insurance_premium: number | null;      // 生命保険料（年間・円）
-  earthquake_insurance_premium: number | null; // 地震保険料（年間・円）
-  medical_expenses: number | null;     // 医療費（年間・円）
-  // 計算結果キャッシュ（オプション）
-  cached_take_home: number | null;     // 手取り計算結果キャッシュ（円）
-  cached_total_tax: number | null;     // 税金合計キャッシュ（円）
-  cached_social_insurance: number | null; // 社会保険料キャッシュ（円）
-  prefecture: string | null;           // 勤務地（都道府県）
+  living_expenses: number | null;            // 月間生活費（万円）
+  // 節税控除（Supabaseスキーマのカラム名に合わせる）
+  ideco_contribution: number | null;         // iDeCo月額掛金（円）
+  furusato_nouzei_donation: number | null;   // ふるさと納税（年間・円）
+  housing_loan_deduction: number | null;     // 住宅ローン控除額（円）
+  life_insurance_deduction: number | null;   // 生命保険料控除（円）
+  prefecture: string | null;                 // 勤務地（都道府県） ※ローカルのみ保存、Supabaseにはない
   created_at: string;
   updated_at: string;
 }

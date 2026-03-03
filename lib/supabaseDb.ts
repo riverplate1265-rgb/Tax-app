@@ -126,18 +126,20 @@ export async function upsertAnnualSettings(
 
 /**
  * 計算結果をキャッシュとして保存する
+ * ※ Supabaseスキーマにキャッシュカラムがないため、現時点ではログのみ
  */
 export async function cacheCalculationResult(
   userId: string,
   year: number,
   result: {
-    cached_take_home: number;
-    cached_total_tax: number;
-    cached_social_insurance: number;
+    cached_take_home?: number;
+    cached_total_tax?: number;
+    cached_social_insurance?: number;
   }
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
-  await upsertAnnualSettings(userId, year, result);
+  // 将来的にスキーマにキャッシュカラムを追加する場合はここで upsertAnnualSettings を呼び出す
+  console.log('[DB] cacheCalculationResult:', { userId, year, result });
 }
 
 // ===== ゲスト → 認証ユーザーへのデータ移行 =====

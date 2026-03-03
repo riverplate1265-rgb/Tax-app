@@ -95,9 +95,9 @@ export default function SettingsScreen() {
       if (settings.annual_income) setAnnualIncome(String(settings.annual_income));
       if (settings.monthly_income) setMonthlyIncome(String(settings.monthly_income));
       if (settings.bonus_amount) setBonusAmount(String(settings.bonus_amount));
-      if (settings.ideco_monthly) setIdecoMonthly(String(settings.ideco_monthly));
-      if (settings.furusato_amount) setFurusatoAmount(String(settings.furusato_amount));
-      if (settings.housing_loan_balance) setHousingLoanBalance(String(settings.housing_loan_balance));
+      if (settings.ideco_contribution) setIdecoMonthly(String(settings.ideco_contribution));
+      if (settings.furusato_nouzei_donation) setFurusatoAmount(String(settings.furusato_nouzei_donation));
+      if (settings.housing_loan_deduction) setHousingLoanBalance(String(settings.housing_loan_deduction));
       if (settings.prefecture) setPrefecture(settings.prefecture);
     }
   }, [settings]);
@@ -107,9 +107,14 @@ export default function SettingsScreen() {
     if (!supabaseUser) return;
     getProfile(supabaseUser.id).then((profile) => {
       if (!profile) return;
-      if (profile.birth_year) setBirthYear(String(profile.birth_year));
-      if (profile.birth_month) setBirthMonth(String(profile.birth_month));
-      if (profile.birth_day) setBirthDay(String(profile.birth_day));
+      if (profile.birth_date) {
+        const parts = profile.birth_date.split('-');
+        if (parts.length === 3) {
+          setBirthYear(parts[0]);
+          setBirthMonth(String(parseInt(parts[1], 10)));
+          setBirthDay(String(parseInt(parts[2], 10)));
+        }
+      }
       if (profile.work_classification) setWorkClass(profile.work_classification as WorkClassification);
       if (profile.has_spouse !== undefined) setHasSpouse(profile.has_spouse);
       if (profile.children_count !== undefined) setChildrenCount(profile.children_count);
@@ -149,9 +154,9 @@ export default function SettingsScreen() {
     setIsSavingProfile(true);
     try {
       await upsertProfile(supabaseUser.id, {
-        birth_year: birthYear ? parseInt(birthYear, 10) : null,
-        birth_month: birthMonth ? parseInt(birthMonth, 10) : null,
-        birth_day: birthDay ? parseInt(birthDay, 10) : null,
+        birth_date: birthYear && birthMonth && birthDay
+          ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
+          : null,
         work_classification: workClass as any,
         has_spouse: hasSpouse,
         children_count: childrenCount,
@@ -171,9 +176,9 @@ export default function SettingsScreen() {
       annual_income: annualIncome ? parseFloat(annualIncome) : null,
       monthly_income: monthlyIncome ? parseFloat(monthlyIncome) : null,
       bonus_amount: bonusAmount ? parseFloat(bonusAmount) : null,
-      ideco_monthly: idecoMonthly ? parseInt(idecoMonthly, 10) : null,
-      furusato_amount: furusatoAmount ? parseInt(furusatoAmount, 10) : null,
-      housing_loan_balance: housingLoanBalance ? parseInt(housingLoanBalance, 10) : null,
+      ideco_contribution: idecoMonthly ? parseInt(idecoMonthly, 10) : null,
+      furusato_nouzei_donation: furusatoAmount ? parseInt(furusatoAmount, 10) : null,
+      housing_loan_deduction: housingLoanBalance ? parseInt(housingLoanBalance, 10) : null,
       prefecture,
     });
     if (success) {

@@ -53,12 +53,11 @@ describe("calculateTax", () => {
 
     // 月収 = 600万 / 16 = 37.5万円
     // 標準報酬月額（健康保険）= 380,000円
-    // 月給分健康保険料（東京4.99%）= 380,000 × 0.0499 × 12 = 約227,544円
+    // 月給分健康保険料（東京4.925%）= 380,000 × 0.04925 × 12 = 約224,580円
     // 賞与1回あたり = 37.5万 × 2 = 75万円 → 標準賞与額 = 750,000円
-    // 賞与分健康保険料 = 750,000 × 0.0499 × 2 = 約74,850円
-    // 合計健康保険料 > 月給のみの計算（227,544円）
-    const monthlyIncome = Math.round(6_000_000 / 16);
-    const monthlyHealthOnly = Math.floor(380_000 * 0.0499) * 12;
+    // 賞与分健康保険料 = 750,000 × 0.04925 × 2 = 約73,875円
+    // 合計健康保険料 > 月給のみの計算
+    const monthlyHealthOnly = Math.floor(380_000 * 0.04925) * 12;
     expect(result.healthInsurance).toBeGreaterThan(monthlyHealthOnly);
 
     // 標準賞与額が設定されている
@@ -89,6 +88,38 @@ describe("calculateTax", () => {
       prefecture: "東京都",
     });
     expect(result39.nursingInsurance).toBe(0);
+  });
+
+  // 子ども・子育て支援金が計算される（令和8年度新設）
+  it("子ども・子育て支援金が計算される（令和8年度）", () => {
+    const result = calculateTax({
+      birthDate: new Date(1990, 0, 1), // 35歳
+      annualIncome: 500,
+      hasSpouseDeduction: false,
+      childrenUnder19: 0,
+      childrenUnder23: 0,
+      prefecture: "東京都",
+    });
+    expect(result.kodomoKosodate).toBeGreaterThan(0);
+  });
+
+  // 社会保険料合計の整合性チェック
+  it("社会保険料合計 = 健康保険 + 介護保険 + 子育て支援金 + 厚生年金 + 雇用保険", () => {
+    const result = calculateTax({
+      birthDate: new Date(1985, 0, 1), // 40歳（介護保険あり）
+      annualIncome: 600,
+      hasSpouseDeduction: false,
+      childrenUnder19: 0,
+      childrenUnder23: 0,
+      prefecture: "東京都",
+    });
+    const expected =
+      result.healthInsurance +
+      result.nursingInsurance +
+      result.kodomoKosodate +
+      result.pensionInsurance +
+      result.employmentInsurance;
+    expect(result.totalSocialInsurance).toBe(expected);
   });
 
   // 配偶者控除ありの場合、税金が少なくなる
@@ -135,25 +166,25 @@ describe("calculateTax", () => {
   });
 
   // 都道府県によって健康保険料が異なる
-  it("都道府県によって健康保険料が異なる", () => {
-    const tokyo = calculateTax({
+  it("都道府県によって健康保険料が異なる（佐賀県が最高、新潟県が最低）", () => {
+    const saga = calculateTax({
       birthDate: new Date(1990, 0, 1),
       annualIncome: 500,
       hasSpouseDeduction: false,
       childrenUnder19: 0,
       childrenUnder23: 0,
-      prefecture: "東京都",
+      prefecture: "佐賀県", // 10.55%（最高）
     });
-    const osaka = calculateTax({
+    const niigata = calculateTax({
       birthDate: new Date(1990, 0, 1),
       annualIncome: 500,
       hasSpouseDeduction: false,
       childrenUnder19: 0,
       childrenUnder23: 0,
-      prefecture: "大阪府",
+      prefecture: "新潟県", // 9.21%（最低）
     });
-    // 大阪の健康保険料率は東京より高い
-    expect(osaka.healthInsurance).toBeGreaterThan(tokyo.healthInsurance);
+    // 佐賀県の健康保険料は新潟県より高い
+    expect(saga.healthInsurance).toBeGreaterThan(niigata.healthInsurance);
   });
 
   // 年収が高いほど手取り割合が下がる傾向

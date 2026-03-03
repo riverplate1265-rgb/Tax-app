@@ -17,9 +17,8 @@ import { useColors } from "@/hooks/use-colors";
 export default function ResultScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { result: resultJson, annualIncomeInput } = useLocalSearchParams<{
+  const { result: resultJson } = useLocalSearchParams<{
     result: string;
-    annualIncomeInput: string;
   }>();
 
   const result: TaxResult = JSON.parse(resultJson ?? "{}");
@@ -28,6 +27,9 @@ export default function ResultScreen() {
   const socialMan = Math.round(result.totalSocialInsurance / 10_000);
   const taxMan = Math.round(result.totalTax / 10_000);
   const takeHomeMan = Math.round(result.takeHome / 10_000);
+
+  // 標準賞与額を万円単位に
+  const bonusKenpoMan = Math.round(result.standardBonusRemunerationKenpo / 10_000);
 
   const chartSegments = [
     {
@@ -81,22 +83,20 @@ export default function ResultScreen() {
             <Text style={styles.summaryHighlight}>{incomeMan.toLocaleString()}万円</Text>{" "}
             のうち、
           </Text>
+          {/* 社会保険料と税金を1行に */}
           <Text style={styles.summaryText}>
-            社会保険料が{" "}
+            社会保険料が約{" "}
             <Text style={[styles.summaryHighlight, { color: "#F5A623" }]}>
               {socialMan.toLocaleString()}万円
             </Text>
-            、
-          </Text>
-          <Text style={styles.summaryText}>
-            税金が{" "}
+            、税金が約{" "}
             <Text style={[styles.summaryHighlight, { color: "#E05252" }]}>
               {taxMan.toLocaleString()}万円
             </Text>
             、
           </Text>
-          <Text style={[styles.summaryText, { marginTop: 8 }]}>
-            手取り額が{" "}
+          <Text style={[styles.summaryText, { marginTop: 4 }]}>
+            手取り額が約{" "}
             <Text style={[styles.summaryHighlight, { color: "#2ECC71", fontSize: 22 }]}>
               {takeHomeMan.toLocaleString()}万円
             </Text>{" "}
@@ -136,7 +136,7 @@ export default function ResultScreen() {
           </View>
         </View>
 
-        {/* 内訳カード */}
+        {/* 社会保険料内訳カード */}
         <View style={styles.detailCard}>
           <Text style={styles.sectionTitle}>社会保険料の内訳</Text>
           <DetailRow
@@ -151,6 +151,11 @@ export default function ResultScreen() {
               colors={colors}
             />
           )}
+          <DetailRow
+            label="子ども・子育て支援金"
+            value={formatYen(result.kodomoKosodate)}
+            colors={colors}
+          />
           <DetailRow
             label="厚生年金保険料"
             value={formatYen(result.pensionInsurance)}
@@ -169,6 +174,7 @@ export default function ResultScreen() {
           </View>
         </View>
 
+        {/* 税金内訳カード */}
         <View style={styles.detailCard}>
           <Text style={styles.sectionTitle}>税金の内訳</Text>
           <DetailRow
@@ -189,23 +195,23 @@ export default function ResultScreen() {
           </View>
         </View>
 
-        {/* 注意書き */}
+        {/* 計算の前提条件 */}
         <View style={styles.noticeCard}>
           <Text style={styles.noticeTitle}>計算の前提条件</Text>
           <Text style={styles.noticeText}>
-            • 社会保険料は標準報酬月額で決まります（標準報酬月額: {formatYen(result.standardMonthlyRemuneration)}）
+            • 社会保険料は、協会けんぽ加入を前提に計算しており、2026年3月分（4月納付分）に基づいて計算しています。
           </Text>
           <Text style={styles.noticeText}>
-            • 賞与にも標準賞与額に対する社会保険料がかかります（標準賞与額: {formatYen(result.standardBonusRemunerationKenpo)}/回、年２回）
+            • 社会保険料は、標準報酬月額 {formatYen(result.standardMonthlyRemuneration)} と仮定して計算しています。
           </Text>
           <Text style={styles.noticeText}>
-            • 住民税は前年所得ベースで計算されます（標準税率10%）
+            • 賞与は月収の4ヶ月分としており、標準賞与額 {bonusKenpoMan}万円/回、年2回と仮定して計算しています。
           </Text>
           <Text style={styles.noticeText}>
-            • 賞与は月収の4ヶ月分として計算しています
+            • 所得税は、2026年に適用される法令に基づいて計算しています（2026年3月1日現在）。
           </Text>
           <Text style={styles.noticeText}>
-            • 協会けんぽ加入を前提に計算しています
+            • 住民税は前年所得ベースで計算しています（標準税率10%）。
           </Text>
         </View>
 
@@ -410,7 +416,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 12,
       color: colors.muted,
       lineHeight: 20,
-      marginBottom: 2,
+      marginBottom: 4,
     },
     retryButton: {
       backgroundColor: colors.surface,

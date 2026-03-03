@@ -15,6 +15,12 @@ export interface TaxInput {
   childrenUnder19: number; // 16歳以上19歳未満
   childrenUnder23: number; // 19歳以上22歳以下
   prefecture: string;
+  // 詳細モード専用（オプショナル）
+  idecoMonthly?: number;          // iDeCo月額掛金（円）
+  furusatoAmount?: number;        // ふるさと納税寄付金額（年間・円）
+  housingLoanBalance?: number;    // 住宅ローン年末残高（円）
+  lifeInsurancePremium?: number;  // 生命保険料（年間・円）
+  medicalExpenses?: number;       // 医療費（年間・円）
 }
 
 export interface TaxResult {
@@ -33,6 +39,14 @@ export interface TaxResult {
   totalTax: number;                       // 税金合計（年間・円）
   takeHome: number;                       // 手取り（年間・円）
   takeHomeRatio: number;                  // 手取り割合（%）
+  // 詳細モード追加情報
+  idecoDeduction?: number;               // iDeCo控除額（年間・円）
+  furusatoTaxCredit?: number;            // ふるさと納税税額控除額（円）
+  housingLoanDeductionApplied?: number;  // 適用された住宅ローン控除額（円）
+  lifeInsuranceDeduction?: number;       // 生命保険料控除額（円）
+  medicalExpenseDeduction?: number;      // 医療費控除額（円）
+  totalDeductions?: number;              // 詳細控除合計（円）
+  taxSavings?: number;                   // 節税効果（簡易モード比較・円）
 }
 
 /**
@@ -164,6 +178,84 @@ function getIncomeTaxRate(taxableIncome: number): { rate: number; deduction: num
 }
 
 /**
+ * iDeCo控除額を計算する
+ * 拠出額は全額小規模企業共済等掛金控除として所得控除
+ * 上限: 会社員（企業型DCなし）= 月2.3万円 = 年27.6万円
+ */
+function calcIdecoDeduction(idecoMonthly: number): number {
+  const annual = idecoMonthly * 12;
+  // 上限: 月2.3万円（会社員・企業型DCなし）
+  return Math.min(annual, 276_000);
+}
+
+/**
+ * 生命保険料控除額を計算する（所得税）
+ * 新制度（平成24年以降の契約）
+ * 一般生命保険料・介護医療保険料・個人年金保険料それぞれ最大4万円、合計最大12万円
+ * 簡易計算：年間保険料から控除額を算出（一般生命保険料のみとして計算）
+ */
+function calcLifeInsuranceDeduction(annualPremium: number): number {
+  // 新制度の控除額計算（一般生命保険料として計算）
+  if (annualPremium <= 20_000) return annualPremium;
+  if (annualPremium <= 40_000) return Math.floor(annualPremium / 2) + 10_000;
+  if (annualPremium <= 80_000) return Math.floor(annualPremium / 4) + 20_000;
+  return 40_000; // 上限4万円
+}
+
+/**
+ * 医療費控除額を計算する
+ * 控除額 = 実際の医療費 - 保険金等で補填された金額 - 10万円（または総所得の5%の低い方）
+ * 上限: 200万円
+ */
+function calcMedicalExpenseDeduction(medicalExpenses: number, totalIncome: number): number {
+  const threshold = Math.min(100_000, totalIncome * 0.05);
+  const deduction = Math.max(0, medicalExpenses - threshold);
+  return Math.min(deduction, 2_000_000);
+}
+
+/**
+ * 住宅ローン控除額を計算する（令和8年度）
+ * 控除額 = 年末残高 × 0.7%（令和4年以降の入居）
+ * 上限: 新築認定住宅 35万円、新築ZEH水準 31.5万円、新築省エネ基準 28万円、その他 21万円
+ * 簡易計算として年末残高 × 0.7%、上限35万円で計算
+ */
+function calcHousingLoanDeduction(loanBalance: number): number {
+  const deduction = Math.floor(loanBalance * 0.007);
+  return Math.min(deduction, 350_000);
+}
+
+/**
+ * ふるさと納税の税額控除額を計算する
+ * 所得税：(寄付金額 - 2,000円) × 所得税率 × 1.021（復興税）
+ * 住民税（基本分）：(寄付金額 - 2,000円) × 10%
+ * 住民税（特例分）：(寄付金額 - 2,000円) × (90% - 所得税率 × 1.021)
+ * 合計で (寄付金額 - 2,000円) の実質全額が控除される（ワンストップ特例または確定申告）
+ * ただし住民税特例分の上限: 住民税所得割額 × 20%
+ */
+function calcFurusatoTaxCredit(
+  furusatoAmount: number,
+  taxableIncome: number,
+  taxableIncomeJumin: number
+): { incomeTaxCredit: number; residentTaxCredit: number; total: number } {
+  if (furusatoAmount <= 2_000) return { incomeTaxCredit: 0, residentTaxCredit: 0, total: 0 };
+  const base = furusatoAmount - 2_000;
+  const { rate } = getIncomeTaxRate(taxableIncome);
+  // 所得税控除（確定申告の場合）
+  const incomeTaxCredit = Math.floor(base * rate * 1.021);
+  // 住民税（基本分）
+  const residentTaxBasic = Math.floor(base * 0.10);
+  // 住民税（特例分）
+  const specialRate = Math.max(0, 0.90 - rate * 1.021);
+  const residentTaxSpecial = Math.floor(base * specialRate);
+  // 住民税特例分の上限チェック（住民税所得割の20%）
+  const residentTaxShotokuWari = Math.floor(taxableIncomeJumin * 0.10);
+  const residentTaxSpecialCapped = Math.min(residentTaxSpecial, Math.floor(residentTaxShotokuWari * 0.20));
+  const residentTaxCredit = residentTaxBasic + residentTaxSpecialCapped;
+  const total = incomeTaxCredit + residentTaxCredit;
+  return { incomeTaxCredit, residentTaxCredit, total };
+}
+
+/**
  * 税金・社会保険料の計算メイン関数
  * 適用法令: 令和8年度（2026年3月1日現在）
  */
@@ -251,10 +343,26 @@ export function calculateTax(input: TaxInput): TaxResult {
   const fuyoKojo =
     input.childrenUnder19 * 380_000 + input.childrenUnder23 * 630_000;
 
-  // 課税所得
+  // ===== 詳細モード：追加控除の計算 =====
+  let idecoDeduction = 0;
+  let lifeInsuranceDeduction = 0;
+  let medicalExpenseDeduction = 0;
+
+  if (input.idecoMonthly && input.idecoMonthly > 0) {
+    idecoDeduction = calcIdecoDeduction(input.idecoMonthly);
+  }
+  if (input.lifeInsurancePremium && input.lifeInsurancePremium > 0) {
+    lifeInsuranceDeduction = calcLifeInsuranceDeduction(input.lifeInsurancePremium);
+  }
+  if (input.medicalExpenses && input.medicalExpenses > 0) {
+    medicalExpenseDeduction = calcMedicalExpenseDeduction(input.medicalExpenses, totalIncome);
+  }
+
+  // 課税所得（詳細モード：iDeCo・生命保険・医療費控除を追加）
   const taxableIncome = Math.max(
     0,
     kyuyoShotoku - kihonKojo - shakaihokenKojo - haiguushaKojo - fuyoKojo
+    - idecoDeduction - lifeInsuranceDeduction - medicalExpenseDeduction
   );
 
   // 所得税額（千円未満切り捨て）
@@ -262,7 +370,7 @@ export function calculateTax(input: TaxInput): TaxResult {
   const incomeTaxBase = Math.floor(taxableIncome / 1000) * 1000;
   const incomeTaxBeforeRestore = Math.floor(incomeTaxBase * rate - deduction);
   // 復興特別所得税（2.1%上乗せ）※令和8年分は継続
-  const incomeTax = Math.floor(Math.max(0, incomeTaxBeforeRestore) * 1.021);
+  let incomeTax = Math.floor(Math.max(0, incomeTaxBeforeRestore) * 1.021);
 
   // ===== 住民税の計算 =====
   // 前年所得と同水準として計算
@@ -271,6 +379,7 @@ export function calculateTax(input: TaxInput): TaxResult {
   const taxableIncomeJumin = Math.max(
     0,
     kyuyoShotoku - kihonKojoJumin - shakaihokenKojo - haiguushaKojo - fuyoKojo
+    - idecoDeduction - lifeInsuranceDeduction - medicalExpenseDeduction
   );
 
   // 所得割（標準税率10%）
@@ -279,12 +388,56 @@ export function calculateTax(input: TaxInput): TaxResult {
   // 均等割（標準: 5,000円/年）
   const kintouWari = taxableIncomeJumin > 0 ? 5_000 : 0;
 
-  const residentTax = shotokuWari + kintouWari;
+  let residentTax = shotokuWari + kintouWari;
+
+  // ===== 詳細モード：住宅ローン控除（税額控除）=====
+  let housingLoanDeductionApplied = 0;
+  if (input.housingLoanBalance && input.housingLoanBalance > 0) {
+    const rawDeduction = calcHousingLoanDeduction(input.housingLoanBalance);
+    // まず所得税から控除
+    const incomeTaxReduction = Math.min(rawDeduction, incomeTax);
+    incomeTax = incomeTax - incomeTaxReduction;
+    // 残りは住民税から控除（上限: 所得税の課税総所得金額等の5%、最大97,500円）
+    const remaining = rawDeduction - incomeTaxReduction;
+    const residentTaxLimit = Math.min(97_500, Math.floor(taxableIncome * 0.05));
+    const residentTaxReduction = Math.min(remaining, residentTaxLimit);
+    residentTax = Math.max(0, residentTax - residentTaxReduction);
+    housingLoanDeductionApplied = incomeTaxReduction + residentTaxReduction;
+  }
+
+  // ===== 詳細モード：ふるさと納税税額控除 =====
+  let furusatoTaxCredit = 0;
+  if (input.furusatoAmount && input.furusatoAmount > 2_000) {
+    const furusato = calcFurusatoTaxCredit(input.furusatoAmount, taxableIncome, taxableIncomeJumin);
+    // 所得税・住民税から税額控除
+    const itReduction = Math.min(furusato.incomeTaxCredit, incomeTax);
+    incomeTax = incomeTax - itReduction;
+    const rtReduction = Math.min(furusato.residentTaxCredit, residentTax);
+    residentTax = Math.max(0, residentTax - rtReduction);
+    furusatoTaxCredit = itReduction + rtReduction;
+  }
 
   // ===== 手取り計算 =====
   const totalTax = incomeTax + residentTax;
   const takeHome = annualIncome - totalSocialInsurance - totalTax;
   const takeHomeRatio = Math.round((takeHome / annualIncome) * 1000) / 10;
+
+  // ===== 詳細モード：節税効果の計算 =====
+  const hasDetailedInput = (input.idecoMonthly ?? 0) > 0 ||
+    (input.furusatoAmount ?? 0) > 0 ||
+    (input.housingLoanBalance ?? 0) > 0 ||
+    (input.lifeInsurancePremium ?? 0) > 0 ||
+    (input.medicalExpenses ?? 0) > 0;
+
+  let taxSavings: number | undefined;
+  let totalDeductions: number | undefined;
+
+  if (hasDetailedInput) {
+    totalDeductions = idecoDeduction + lifeInsuranceDeduction + medicalExpenseDeduction;
+    // 節税効果 = 詳細控除による税金減少分 + 税額控除分
+    const deductionTaxSaving = Math.floor(totalDeductions * rate * 1.021);
+    taxSavings = deductionTaxSaving + housingLoanDeductionApplied + furusatoTaxCredit;
+  }
 
   return {
     annualIncome,
@@ -302,6 +455,16 @@ export function calculateTax(input: TaxInput): TaxResult {
     totalTax,
     takeHome,
     takeHomeRatio,
+    // 詳細モード情報（詳細入力がある場合のみ）
+    ...(hasDetailedInput && {
+      idecoDeduction: idecoDeduction > 0 ? idecoDeduction : undefined,
+      furusatoTaxCredit: furusatoTaxCredit > 0 ? furusatoTaxCredit : undefined,
+      housingLoanDeductionApplied: housingLoanDeductionApplied > 0 ? housingLoanDeductionApplied : undefined,
+      lifeInsuranceDeduction: lifeInsuranceDeduction > 0 ? lifeInsuranceDeduction : undefined,
+      medicalExpenseDeduction: medicalExpenseDeduction > 0 ? medicalExpenseDeduction : undefined,
+      totalDeductions,
+      taxSavings,
+    }),
   };
 }
 

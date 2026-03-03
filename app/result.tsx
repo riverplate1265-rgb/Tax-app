@@ -17,11 +17,13 @@ import { useColors } from "@/hooks/use-colors";
 export default function ResultScreen() {
   const router = useRouter();
   const colors = useColors();
-  const { result: resultJson } = useLocalSearchParams<{
+  const { result: resultJson, mode } = useLocalSearchParams<{
     result: string;
+    mode: string;
   }>();
 
   const result: TaxResult = JSON.parse(resultJson ?? "{}");
+  const isDetailedMode = mode === "detailed";
 
   const incomeMan = Math.round(result.annualIncome / 10_000);
   const socialMan = Math.round(result.totalSocialInsurance / 10_000);
@@ -58,6 +60,9 @@ export default function ResultScreen() {
     router.back();
   };
 
+  // 節税効果の有無チェック
+  const hasTaxSavings = isDetailedMode && (result.taxSavings ?? 0) > 0;
+
   return (
     <ScreenContainer containerClassName="bg-background">
       <ScrollView
@@ -73,7 +78,14 @@ export default function ResultScreen() {
           >
             <Text style={styles.backBtnText}>‹ 戻る</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>診断結果</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.headerTitle}>診断結果</Text>
+            {isDetailedMode && (
+              <View style={styles.detailModeBadge}>
+                <Text style={styles.detailModeBadgeText}>詳細モード</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* サマリーカード */}
@@ -83,7 +95,6 @@ export default function ResultScreen() {
             <Text style={styles.summaryHighlight}>{incomeMan.toLocaleString()}万円</Text>{" "}
             のうち、
           </Text>
-          {/* 社会保険料と税金を1行に */}
           <Text style={styles.summaryText}>
             社会保険料が約{" "}
             <Text style={[styles.summaryHighlight, { color: "#F5A623" }]}>
@@ -107,6 +118,58 @@ export default function ResultScreen() {
             <Text style={styles.ratioValue}>{result.takeHomeRatio}%</Text>
           </View>
         </View>
+
+        {/* 詳細モード：節税効果カード */}
+        {hasTaxSavings && (
+          <View style={styles.savingsCard}>
+            <View style={styles.savingsHeader}>
+              <Text style={styles.savingsIcon}>💰</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.savingsTitle}>節税効果</Text>
+                <Text style={styles.savingsSubtitle}>入力した控除による税負担の軽減額</Text>
+              </View>
+              <Text style={styles.savingsTotal}>
+                {formatYen(result.taxSavings ?? 0)}
+              </Text>
+            </View>
+            <View style={styles.savingsDivider} />
+            {(result.idecoDeduction ?? 0) > 0 && (
+              <SavingsRow
+                label="iDeCo 所得控除"
+                value={`控除額 ${formatYen(result.idecoDeduction!)}`}
+                colors={colors}
+              />
+            )}
+            {(result.furusatoTaxCredit ?? 0) > 0 && (
+              <SavingsRow
+                label="ふるさと納税 税額控除"
+                value={formatYen(result.furusatoTaxCredit!)}
+                colors={colors}
+              />
+            )}
+            {(result.housingLoanDeductionApplied ?? 0) > 0 && (
+              <SavingsRow
+                label="住宅ローン控除（適用額）"
+                value={formatYen(result.housingLoanDeductionApplied!)}
+                colors={colors}
+              />
+            )}
+            {(result.lifeInsuranceDeduction ?? 0) > 0 && (
+              <SavingsRow
+                label="生命保険料 所得控除"
+                value={`控除額 ${formatYen(result.lifeInsuranceDeduction!)}`}
+                colors={colors}
+              />
+            )}
+            {(result.medicalExpenseDeduction ?? 0) > 0 && (
+              <SavingsRow
+                label="医療費控除"
+                value={`控除額 ${formatYen(result.medicalExpenseDeduction!)}`}
+                colors={colors}
+              />
+            )}
+          </View>
+        )}
 
         {/* 円グラフ */}
         <View style={styles.chartCard}>
@@ -213,6 +276,11 @@ export default function ResultScreen() {
           <Text style={styles.noticeText}>
             • 住民税は前年所得ベースで計算しています（標準税率10%）。
           </Text>
+          {isDetailedMode && (
+            <Text style={styles.noticeText}>
+              • ふるさと納税の控除額はワンストップ特例または確定申告を行った場合の試算です。
+            </Text>
+          )}
         </View>
 
         {/* もう一度ボタン */}
@@ -256,6 +324,34 @@ function DetailRow({
   );
 }
 
+function SavingsRow({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingVertical: 9,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(46,204,113,0.15)",
+      }}
+    >
+      <Text style={{ fontSize: 13, color: "#1A7A40" }}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: "600", color: "#1A7A40" }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     scrollContent: {
@@ -274,11 +370,27 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.primary,
       fontWeight: "500",
     },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
     headerTitle: {
       fontSize: 26,
       fontWeight: "700",
       color: colors.foreground,
       letterSpacing: -0.5,
+    },
+    detailModeBadge: {
+      backgroundColor: "#F5A623",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    detailModeBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
     summaryCard: {
       backgroundColor: colors.surface,
@@ -322,6 +434,49 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "800",
       color: "#2ECC71",
       letterSpacing: -1,
+    },
+    // 節税効果カード
+    savingsCard: {
+      backgroundColor: "#F0FBF4",
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1.5,
+      borderColor: "#2ECC71",
+      shadowColor: "#2ECC71",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    savingsHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 12,
+    },
+    savingsIcon: {
+      fontSize: 24,
+    },
+    savingsTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: "#1A7A40",
+    },
+    savingsSubtitle: {
+      fontSize: 12,
+      color: "#2E8B57",
+      marginTop: 2,
+    },
+    savingsTotal: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: "#1A7A40",
+    },
+    savingsDivider: {
+      height: 1,
+      backgroundColor: "rgba(46,204,113,0.3)",
+      marginBottom: 8,
     },
     chartCard: {
       backgroundColor: colors.surface,

@@ -12,7 +12,6 @@ import {
   Platform,
   StyleSheet,
   KeyboardAvoidingView,
-  Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -45,7 +44,7 @@ export default function HomeScreen() {
   // モード状態
   const [mode, setMode] = useState<CalcMode>("simple");
 
-  // 入力状態（簡易モード）- デフォルト値を設定
+  // 入力状態（簡易モード）
   const [birthYear, setBirthYear] = useState("1990");
   const [birthMonth, setBirthMonth] = useState("1");
   const [birthDay, setBirthDay] = useState("1");
@@ -57,16 +56,36 @@ export default function HomeScreen() {
   const [showPrefModal, setShowPrefModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // 詳細モード専用の入力状態
+  const [idecoMonthly, setIdecoMonthly] = useState("");
+  const [furusatoAmount, setFurusatoAmount] = useState("");
+  const [housingLoanBalance, setHousingLoanBalance] = useState("");
+  const [lifeInsurancePremium, setLifeInsurancePremium] = useState("");
+  const [medicalExpenses, setMedicalExpenses] = useState("");
+
+  // 設定タブのデータを読み込んで詳細モードに反映
+  useEffect(() => {
+    if (settings) {
+      if (settings.ideco_contribution) {
+        setIdecoMonthly(String(settings.ideco_contribution));
+      }
+      if (settings.furusato_nouzei_donation) {
+        setFurusatoAmount(String(settings.furusato_nouzei_donation));
+      }
+      if (settings.housing_loan_deduction) {
+        setHousingLoanBalance(String(settings.housing_loan_deduction));
+      }
+      if (settings.life_insurance_deduction) {
+        setLifeInsurancePremium(String(settings.life_insurance_deduction));
+      }
+    }
+  }, [settings]);
+
   const handleModeToggle = (isDetailed: boolean) => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    if (isDetailed) {
-      // 詳細モードは有料版専用 → 設定タブへ誘導するアラート表示
-      setMode("detailed");
-    } else {
-      setMode("simple");
-    }
+    setMode(isDetailed ? "detailed" : "simple");
   };
 
   const validate = (): boolean => {
@@ -120,6 +139,14 @@ export default function HomeScreen() {
       childrenUnder19,
       childrenUnder23,
       prefecture,
+      // 詳細モードの場合のみ追加フィールドを渡す
+      ...(mode === "detailed" && {
+        idecoMonthly: idecoMonthly ? parseInt(idecoMonthly, 10) : undefined,
+        furusatoAmount: furusatoAmount ? parseInt(furusatoAmount, 10) : undefined,
+        housingLoanBalance: housingLoanBalance ? parseInt(housingLoanBalance, 10) : undefined,
+        lifeInsurancePremium: lifeInsurancePremium ? parseInt(lifeInsurancePremium, 10) : undefined,
+        medicalExpenses: medicalExpenses ? parseInt(medicalExpenses, 10) : undefined,
+      }),
     };
 
     const result = calculateTax(input);
@@ -135,9 +162,7 @@ export default function HomeScreen() {
     save({
       annual_income: parseFloat(annualIncome),
       prefecture,
-      birth_year: parseInt(birthYear, 10),
-      birth_month: parseInt(birthMonth, 10),
-      birth_day: parseInt(birthDay, 10),
+      birth_date: `${birthYear}-${String(birthMonth).padStart(2, "0")}-${String(birthDay).padStart(2, "0")}`,
     } as any).catch((e) => console.warn("[HomeScreen] settings save failed:", e));
 
     router.push({
@@ -145,6 +170,7 @@ export default function HomeScreen() {
       params: {
         result: JSON.stringify(result),
         annualIncomeInput: annualIncome,
+        mode,
       },
     });
   };
@@ -223,28 +249,23 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 詳細モードのプレミアム案内 */}
+          {/* 詳細モードの説明バナー */}
           {mode === "detailed" && (
-            <View style={styles.premiumBanner}>
-              <Text style={styles.premiumBannerIcon}>🔒</Text>
+            <View style={styles.detailBanner}>
+              <Text style={styles.detailBannerIcon}>✨</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.premiumBannerTitle}>詳細モードは有料版専用です</Text>
-                <Text style={styles.premiumBannerText}>
-                  iDeCo・ふるさと納税・住宅ローン控除を含む1円単位の精密計算。年額500円でご利用いただけます。
+                <Text style={styles.detailBannerTitle}>詳細モード：節税控除を反映</Text>
+                <Text style={styles.detailBannerText}>
+                  iDeCo・ふるさと納税・住宅ローン控除を加味した精密計算を行います。
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.premiumBannerBtn}
-                onPress={() => router.push("/(tabs)/settings")}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.premiumBannerBtnText}>詳細を見る</Text>
-              </TouchableOpacity>
             </View>
           )}
 
-          {/* フォームカード（簡易モード） */}
+          {/* フォームカード（共通：基本情報） */}
           <View style={styles.card}>
+            <Text style={styles.cardSectionTitle}>基本情報</Text>
+
             {/* 生年月日 */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>生年月日</Text>
@@ -407,16 +428,126 @@ export default function HomeScreen() {
             </View>
           </View>
 
+          {/* 詳細モード：節税控除フォーム */}
+          {mode === "detailed" && (
+            <View style={styles.card}>
+              <Text style={styles.cardSectionTitle}>節税控除の入力</Text>
+              <Text style={styles.cardSectionSubtitle}>
+                入力した控除を加味して手取りを精密計算します
+              </Text>
+
+              {/* iDeCo */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>iDeCo 月額掛金</Text>
+                <Text style={styles.fieldHint}>全額所得控除。上限：会社員2.3万円/月</Text>
+                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={styles.detailInput}
+                    placeholder="23000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={idecoMonthly}
+                    onChangeText={setIdecoMonthly}
+                    returnKeyType="next"
+                  />
+                  <Text style={styles.incomeUnit}>円/月</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* ふるさと納税 */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>ふるさと納税 年間寄付額</Text>
+                <Text style={styles.fieldHint}>2,000円を超える部分が税額控除されます</Text>
+                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={styles.detailInput}
+                    placeholder="50000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={furusatoAmount}
+                    onChangeText={setFurusatoAmount}
+                    returnKeyType="next"
+                  />
+                  <Text style={styles.incomeUnit}>円/年</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* 住宅ローン控除 */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>住宅ローン年末残高</Text>
+                <Text style={styles.fieldHint}>残高×0.7%が税額控除（令和4年以降入居）</Text>
+                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={styles.detailInput}
+                    placeholder="30000000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={housingLoanBalance}
+                    onChangeText={setHousingLoanBalance}
+                    returnKeyType="next"
+                  />
+                  <Text style={styles.incomeUnit}>円</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* 生命保険料控除 */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>生命保険料 年間支払額</Text>
+                <Text style={styles.fieldHint}>新制度：最大4万円の所得控除</Text>
+                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={styles.detailInput}
+                    placeholder="120000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={lifeInsurancePremium}
+                    onChangeText={setLifeInsurancePremium}
+                    returnKeyType="next"
+                  />
+                  <Text style={styles.incomeUnit}>円/年</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* 医療費控除 */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>医療費 年間支払額</Text>
+                <Text style={styles.fieldHint}>10万円超の部分が所得控除（上限200万円）</Text>
+                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={styles.detailInput}
+                    placeholder="150000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={medicalExpenses}
+                    onChangeText={setMedicalExpenses}
+                    returnKeyType="done"
+                  />
+                  <Text style={styles.incomeUnit}>円/年</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           <TouchableOpacity
             style={styles.calcButton}
             onPress={handleCalculate}
             activeOpacity={0.85}
           >
-            <Text style={styles.calcButtonText}>手取りを計算する</Text>
+            <Text style={styles.calcButtonText}>
+              {mode === "detailed" ? "詳細計算する" : "手取りを計算する"}
+            </Text>
           </TouchableOpacity>
 
           <Text style={styles.disclaimer}>
-            ※ 本計算は概算です。実際の金額は給与明細等でご確認ください。
+            ※ 本計算は概算です。実際の金額は給与明細・確定申告等でご確認ください。
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -545,43 +676,33 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: "#FFFFFF",
       letterSpacing: 0.5,
     },
-    // プレミアム案内バナー
-    premiumBanner: {
+    // 詳細モード説明バナー
+    detailBanner: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "#FFF8EC",
+      backgroundColor: "#EEF6FF",
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: "#F5A623",
+      borderColor: colors.primary,
       padding: 14,
       marginBottom: 16,
       gap: 10,
     },
-    premiumBannerIcon: {
-      fontSize: 24,
+    detailBannerIcon: {
+      fontSize: 22,
     },
-    premiumBannerTitle: {
+    detailBannerTitle: {
       fontSize: 13,
       fontWeight: "700",
-      color: "#8B5E00",
-      marginBottom: 4,
+      color: colors.primary,
+      marginBottom: 3,
     },
-    premiumBannerText: {
+    detailBannerText: {
       fontSize: 12,
-      color: "#A07020",
+      color: colors.muted,
       lineHeight: 18,
     },
-    premiumBannerBtn: {
-      backgroundColor: "#F5A623",
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    premiumBannerBtnText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: "#FFFFFF",
-    },
+    // カード
     card: {
       backgroundColor: colors.surface,
       borderRadius: 16,
@@ -595,6 +716,19 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       shadowRadius: 8,
       elevation: 2,
     },
+    cardSectionTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.primary,
+      paddingTop: 14,
+      paddingBottom: 4,
+      letterSpacing: 0.3,
+    },
+    cardSectionSubtitle: {
+      fontSize: 12,
+      color: colors.muted,
+      paddingBottom: 8,
+    },
     fieldGroup: {
       paddingVertical: 14,
     },
@@ -602,7 +736,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 15,
       fontWeight: "600",
       color: colors.foreground,
-      marginBottom: 8,
+      marginBottom: 4,
     },
     fieldHint: {
       fontSize: 12,
@@ -616,6 +750,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     dateRow: {
       flexDirection: "row",
       gap: 8,
+      marginTop: 8,
     },
     dateInputWrap: {
       flexDirection: "row",
@@ -653,6 +788,13 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       flex: 1,
       fontSize: 22,
       fontWeight: "600",
+      color: colors.foreground,
+      padding: 0,
+    },
+    detailInput: {
+      flex: 1,
+      fontSize: 18,
+      fontWeight: "500",
       color: colors.foreground,
       padding: 0,
     },
@@ -706,6 +848,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderColor: colors.border,
       paddingHorizontal: 12,
       paddingVertical: 12,
+      marginTop: 8,
     },
     prefSelectorText: {
       flex: 1,

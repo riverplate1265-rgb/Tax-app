@@ -12,6 +12,7 @@ import {
   Platform,
   StyleSheet,
   KeyboardAvoidingView,
+  Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -20,11 +21,17 @@ import { PREFECTURES } from "@/lib/constants";
 import { calculateTax, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 
+// モード定義
+type CalcMode = "simple" | "detailed";
+
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
 
-  // 入力状態
+  // モード状態
+  const [mode, setMode] = useState<CalcMode>("simple");
+
+  // 入力状態（簡易モード）
   const [birthYear, setBirthYear] = useState("");
   const [birthMonth, setBirthMonth] = useState("");
   const [birthDay, setBirthDay] = useState("");
@@ -35,6 +42,18 @@ export default function HomeScreen() {
   const [prefecture, setPrefecture] = useState("東京都");
   const [showPrefModal, setShowPrefModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleModeToggle = (isDetailed: boolean) => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    if (isDetailed) {
+      // 詳細モードは有料版専用 → 設定タブへ誘導するアラート表示
+      setMode("detailed");
+    } else {
+      setMode("simple");
+    }
+  };
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -130,10 +149,71 @@ export default function HomeScreen() {
           {/* ヘッダー */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>手取り計算</Text>
-            <Text style={styles.headerSubtitle}>簡易診断</Text>
+            <Text style={styles.headerSubtitle}>令和8年度（2026年）最新法令対応</Text>
           </View>
 
-          {/* フォームカード */}
+          {/* 簡易 / 詳細 モード切替トグル */}
+          <View style={styles.modeToggleContainer}>
+            <TouchableOpacity
+              style={[
+                styles.modeToggleBtn,
+                mode === "simple" && styles.modeToggleBtnActive,
+              ]}
+              onPress={() => handleModeToggle(false)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.modeToggleBtnText,
+                  mode === "simple" && styles.modeToggleBtnTextActive,
+                ]}
+              >
+                簡易
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modeToggleBtn,
+                mode === "detailed" && styles.modeToggleBtnActive,
+              ]}
+              onPress={() => handleModeToggle(true)}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.modeToggleBtnText,
+                  mode === "detailed" && styles.modeToggleBtnTextActive,
+                ]}
+              >
+                詳細
+              </Text>
+              <View style={styles.premiumBadge}>
+                <Text style={styles.premiumBadgeText}>PRO</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* 詳細モードのプレミアム案内 */}
+          {mode === "detailed" && (
+            <View style={styles.premiumBanner}>
+              <Text style={styles.premiumBannerIcon}>🔒</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.premiumBannerTitle}>詳細モードは有料版専用です</Text>
+                <Text style={styles.premiumBannerText}>
+                  iDeCo・ふるさと納税・住宅ローン控除を含む1円単位の精密計算。年額500円でご利用いただけます。
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.premiumBannerBtn}
+                onPress={() => router.push("/(tabs)/settings")}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.premiumBannerBtnText}>詳細を見る</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* フォームカード（簡易モード） */}
           <View style={styles.card}>
             {/* 生年月日 */}
             <View style={styles.fieldGroup}>
@@ -297,7 +377,6 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* 計算ボタン */}
           <TouchableOpacity
             style={styles.calcButton}
             onPress={handleCalculate}
@@ -375,7 +454,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       paddingBottom: 40,
     },
     header: {
-      marginBottom: 24,
+      marginBottom: 20,
       paddingTop: 8,
     },
     headerTitle: {
@@ -385,9 +464,93 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       letterSpacing: -0.5,
     },
     headerSubtitle: {
-      fontSize: 14,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 4,
+    },
+    // モード切替トグル
+    modeToggleContainer: {
+      flexDirection: "row",
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 4,
+      marginBottom: 16,
+    },
+    modeToggleBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 10,
+      borderRadius: 9,
+      gap: 6,
+    },
+    modeToggleBtnActive: {
+      backgroundColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    modeToggleBtnText: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.muted,
+    },
+    modeToggleBtnTextActive: {
+      color: "#FFFFFF",
+    },
+    premiumBadge: {
+      backgroundColor: "#F5A623",
+      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+    },
+    premiumBadgeText: {
+      fontSize: 9,
+      fontWeight: "800",
+      color: "#FFFFFF",
+      letterSpacing: 0.5,
+    },
+    // プレミアム案内バナー
+    premiumBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#FFF8EC",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#F5A623",
+      padding: 14,
+      marginBottom: 16,
+      gap: 10,
+    },
+    premiumBannerIcon: {
+      fontSize: 24,
+    },
+    premiumBannerTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#8B5E00",
+      marginBottom: 4,
+    },
+    premiumBannerText: {
+      fontSize: 12,
+      color: "#A07020",
+      lineHeight: 18,
+    },
+    premiumBannerBtn: {
+      backgroundColor: "#F5A623",
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    premiumBannerBtnText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
     card: {
       backgroundColor: colors.surface,

@@ -31,8 +31,28 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "手取り計算",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "計算",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name="calculator" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="analysis"
+        options={{
+          title: "分析",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name="chart.bar.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "設定",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={26} name="gearshape.fill" color={color} />
+          ),
         }}
       />
     </Tabs>

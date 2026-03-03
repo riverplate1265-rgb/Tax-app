@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ScrollView,
   Text,
@@ -7,12 +7,14 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { DonutChart } from "@/components/DonutChart";
 import { BarChart, HorizontalBar } from "@/components/BarChart";
 import { useColors } from "@/hooks/use-colors";
+import { useCalculationResult } from "@/hooks/use-calculation-result";
 import {
   simulateFutureIncome,
   calcTaxUsage,
@@ -21,33 +23,75 @@ import {
 } from "@/lib/taxCalculatorDetailed";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const CHART_WIDTH = SCREEN_WIDTH - 64; // padding考慮
+const CHART_WIDTH = SCREEN_WIDTH - 64;
 
-// ===== モックデータ =====
-// 実際の実装ではSupabaseから取得
-const MOCK_ANNUAL_INCOME = 500; // 万円
-const MOCK_AGE = 35;
-const MOCK_TAKE_HOME = 383; // 万円
-const MOCK_TOTAL_TAX = 27; // 万円（所得税+住民税）
-const MOCK_SOCIAL_INSURANCE = 90; // 万円
+// 同世代比較データ（国税庁「民間給与実態統計調査」ベース）
+const PEER_DATA_BY_AGE: Record<string, Array<{ label: string; value: number; color: string }>> = {
+  "20代": [
+    { label: "20-24歳", value: 261, color: "#1A6FD4" },
+    { label: "25-29歳", value: 348, color: "#D8E3EF" },
+    { label: "30-34歳", value: 401, color: "#D8E3EF" },
+    { label: "35-39歳", value: 447, color: "#D8E3EF" },
+    { label: "40-44歳", value: 487, color: "#D8E3EF" },
+  ],
+  "30代前半": [
+    { label: "25-29歳", value: 348, color: "#D8E3EF" },
+    { label: "30-34歳", value: 401, color: "#1A6FD4" },
+    { label: "35-39歳", value: 447, color: "#D8E3EF" },
+    { label: "40-44歳", value: 487, color: "#D8E3EF" },
+    { label: "45-49歳", value: 512, color: "#D8E3EF" },
+  ],
+  "30代後半": [
+    { label: "25-29歳", value: 348, color: "#D8E3EF" },
+    { label: "30-34歳", value: 401, color: "#D8E3EF" },
+    { label: "35-39歳", value: 447, color: "#1A6FD4" },
+    { label: "40-44歳", value: 487, color: "#D8E3EF" },
+    { label: "45-49歳", value: 512, color: "#D8E3EF" },
+  ],
+  "40代前半": [
+    { label: "30-34歳", value: 401, color: "#D8E3EF" },
+    { label: "35-39歳", value: 447, color: "#D8E3EF" },
+    { label: "40-44歳", value: 487, color: "#1A6FD4" },
+    { label: "45-49歳", value: 512, color: "#D8E3EF" },
+    { label: "50-54歳", value: 533, color: "#D8E3EF" },
+  ],
+  "40代後半": [
+    { label: "35-39歳", value: 447, color: "#D8E3EF" },
+    { label: "40-44歳", value: 487, color: "#D8E3EF" },
+    { label: "45-49歳", value: 512, color: "#1A6FD4" },
+    { label: "50-54歳", value: 533, color: "#D8E3EF" },
+    { label: "55-59歳", value: 541, color: "#D8E3EF" },
+  ],
+  "50代以上": [
+    { label: "40-44歳", value: 487, color: "#D8E3EF" },
+    { label: "45-49歳", value: 512, color: "#D8E3EF" },
+    { label: "50-54歳", value: 533, color: "#D8E3EF" },
+    { label: "55-59歳", value: 541, color: "#1A6FD4" },
+    { label: "60-64歳", value: 423, color: "#D8E3EF" },
+  ],
+};
 
-// 同世代比較データ（統計ベース）
-const PEER_COMPARISON_DATA = [
-  { label: "25-29歳", value: 348, color: "#D8E3EF" },
-  { label: "30-34歳", value: 401, color: "#D8E3EF" },
-  { label: "35-39歳", value: 447, color: "#1A6FD4" }, // 現在の年代（ハイライト）
-  { label: "40-44歳", value: 487, color: "#D8E3EF" },
-  { label: "45-49歳", value: 512, color: "#D8E3EF" },
-];
+function getAgeGroup(age: number): string {
+  if (age < 25) return "20代";
+  if (age < 30) return "20代";
+  if (age < 35) return "30代前半";
+  if (age < 40) return "30代後半";
+  if (age < 45) return "40代前半";
+  if (age < 50) return "40代後半";
+  return "50代以上";
+}
 
-// 過年度比較データ
-const YEARLY_COMPARISON_DATA = [
-  { label: "2022", value: 360, color: "#D8E3EF" },
-  { label: "2023", value: 371, color: "#D8E3EF" },
-  { label: "2024", value: 375, color: "#D8E3EF" },
-  { label: "2025", value: 380, color: "#D8E3EF" },
-  { label: "2026", value: 383, color: "#2ECC71" }, // 今年（ハイライト）
-];
+function getPeerAverage(age: number): number {
+  if (age < 25) return 261;
+  if (age < 30) return 348;
+  if (age < 35) return 401;
+  if (age < 40) return 447;
+  if (age < 45) return 487;
+  if (age < 50) return 512;
+  if (age < 55) return 533;
+  if (age < 60) return 541;
+  return 423;
+}
 
 // 税務カレンダーデータ
 const TAX_CALENDAR = [
@@ -63,7 +107,6 @@ const TAX_CALENDAR = [
   { month: 12, label: "12月", events: ["年末調整", "住民税 第4期納付"] },
 ];
 
-// 分析サブタブ
 type AnalysisTab = "comparison" | "future" | "taxUsage" | "calendar" | "taxSaving";
 
 export default function AnalysisScreen() {
@@ -71,58 +114,70 @@ export default function AnalysisScreen() {
   const [activeTab, setActiveTab] = useState<AnalysisTab>("comparison");
   const [comparisonView, setComparisonView] = useState<"peer" | "yearly">("peer");
 
+  // 実際の計算結果を取得
+  const { result, input, isLoaded, hasData } = useCalculationResult();
+
   const currentMonth = new Date().getMonth() + 1;
 
-  // 将来予測データ（メモ化）
+  // 実データから値を取得（なければデフォルト値）
+  const annualIncomeMan = input ? Math.round(input.annualIncome) : 500;
+  const age = input ? input.age : 35;
+  const takeHomeMan = result ? Math.round(result.takeHome / 10_000) : 383;
+  const totalTaxMan = result ? Math.round(result.totalTax / 10_000) : 27;
+  const socialInsuranceMan = result ? Math.round(result.totalSocialInsurance / 10_000) : 90;
+  const takeHomeRatio = result ? result.takeHomeRatio : Math.round((383 / 500) * 100);
+
+  // 同世代比較データ（年齢に応じて動的に生成）
+  const ageGroup = getAgeGroup(age);
+  const peerAverage = getPeerAverage(age);
+  const peerData = useMemo(() => {
+    const base = PEER_DATA_BY_AGE[ageGroup] ?? PEER_DATA_BY_AGE["30代後半"];
+    return base.map((d) => ({
+      ...d,
+      // ユーザーの手取りをハイライトバーに上書き
+      value: d.color === "#1A6FD4" ? takeHomeMan : d.value,
+    }));
+  }, [ageGroup, takeHomeMan]);
+
+  // 将来予測データ
   const futureData = useMemo(() => {
-    const data = simulateFutureIncome(MOCK_AGE, MOCK_ANNUAL_INCOME, 0.02, 65);
-    // 5年おきにサンプリング
+    const data = simulateFutureIncome(age, annualIncomeMan, 0.02, 65);
     return data.filter((_, i) => i % 5 === 0).map((d) => ({
       label: `${d.age}歳`,
       value: d.takeHome,
-      color: d.age === MOCK_AGE ? "#1A6FD4" : "#A8C4E8",
+      color: d.age === age ? "#1A6FD4" : "#A8C4E8",
     }));
-  }, []);
+  }, [age, annualIncomeMan]);
 
   // 税の使い道データ
   const taxUsageData = useMemo(() => {
-    const totalTax = MOCK_TOTAL_TAX * 10_000;
+    const totalTax = totalTaxMan * 10_000;
     return calcTaxUsage(totalTax);
-  }, []);
+  }, [totalTaxMan]);
 
   // 節税提案データ
   const idecoMax = calcIdecoMax("会社員（企業年金なし）");
+  const currentIdecoMonthly = input?.idecoMonthly ?? 0;
   const furusatoOptimal = calcFurusatoOptimal(
-    MOCK_ANNUAL_INCOME * 10_000,
-    false,
-    0
+    annualIncomeMan * 10_000,
+    input?.hasSpouseDeduction ?? false,
+    (input?.childrenUnder19 ?? 0) + (input?.childrenUnder23 ?? 0)
   );
-  const idecoAnnualSavings = Math.round((idecoMax * 12 * 0.20) / 10_000); // 概算節税額（万円）
+
+  // 実際の税率を使った節税効果計算
+  const effectiveTaxRate = result && result.annualIncome > 0
+    ? (result.incomeTax / result.annualIncome)
+    : 0.10;
+  const idecoRemainingMonthly = Math.max(0, idecoMax - currentIdecoMonthly);
+  const idecoAnnualSavings = Math.round(idecoRemainingMonthly * 12 * (effectiveTaxRate + 0.10) / 10_000);
   const furusatoSavings = Math.round((furusatoOptimal - 2_000) / 10_000);
 
   const styles = createStyles(colors);
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case "comparison":
-        return renderComparisonTab();
-      case "future":
-        return renderFutureTab();
-      case "taxUsage":
-        return renderTaxUsageTab();
-      case "calendar":
-        return renderCalendarTab();
-      case "taxSaving":
-        return renderTaxSavingTab();
-      default:
-        return null;
-    }
-  };
+  // ---- タブコンテンツ ----
 
-  // ① 比較グラフ
   const renderComparisonTab = () => (
     <View>
-      {/* 比較ビュー切替 */}
       <View style={styles.subToggle}>
         <TouchableOpacity
           style={[styles.subToggleBtn, comparisonView === "peer" && styles.subToggleBtnActive]}
@@ -137,158 +192,156 @@ export default function AnalysisScreen() {
           onPress={() => setComparisonView("yearly")}
         >
           <Text style={[styles.subToggleBtnText, comparisonView === "yearly" && styles.subToggleBtnTextActive]}>
-            過年度比較
+            収入内訳
           </Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          {comparisonView === "peer" ? "同世代の平均手取り比較" : "あなたの手取り推移"}
-        </Text>
-        <Text style={styles.cardSubtitle}>
-          {comparisonView === "peer"
-            ? "国税庁「民間給与実態統計調査」ベース（概算）"
-            : "過去5年間の手取り額の推移"}
-        </Text>
-
-        <View style={styles.chartContainer}>
-          <BarChart
-            data={comparisonView === "peer" ? PEER_COMPARISON_DATA : YEARLY_COMPARISON_DATA}
-            width={CHART_WIDTH}
-            height={180}
-            highlightIndex={comparisonView === "peer" ? 2 : 4}
-            unit="万円"
-          />
-        </View>
-
-        {comparisonView === "peer" && (
+      {comparisonView === "peer" ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>同世代の平均手取り比較</Text>
+          <Text style={styles.cardSubtitle}>
+            国税庁「民間給与実態統計調査」ベース（概算）・青色がご自身の手取り
+          </Text>
+          <View style={styles.chartContainer}>
+            <BarChart
+              data={peerData}
+              width={CHART_WIDTH}
+              height={180}
+              highlightIndex={peerData.findIndex((d) => d.color === "#1A6FD4")}
+              unit="万円"
+            />
+          </View>
           <View style={styles.insightBox}>
-            <Text style={styles.insightIcon}>💡</Text>
+            <Text style={styles.insightIcon}>
+              {takeHomeMan >= peerAverage ? "🎉" : "💡"}
+            </Text>
             <Text style={styles.insightText}>
-              35〜39歳の平均手取りは{" "}
-              <Text style={styles.insightHighlight}>447万円</Text>
+              {ageGroup}の平均手取りは{" "}
+              <Text style={styles.insightHighlight}>{peerAverage}万円</Text>
               。あなたの手取り{" "}
-              <Text style={[styles.insightHighlight, { color: "#E05252" }]}>383万円</Text>
-              {" "}は平均より約64万円低い水準です。
+              <Text style={[styles.insightHighlight, { color: takeHomeMan >= peerAverage ? "#2ECC71" : "#E05252" }]}>
+                {takeHomeMan}万円
+              </Text>
+              {" "}は平均より約{Math.abs(takeHomeMan - peerAverage)}万円{takeHomeMan >= peerAverage ? "高い" : "低い"}水準です。
             </Text>
           </View>
-        )}
-
-        {comparisonView === "yearly" && (
-          <View style={styles.insightBox}>
-            <Text style={styles.insightIcon}>📈</Text>
-            <Text style={styles.insightText}>
-              昨年比{" "}
-              <Text style={styles.insightHighlight}>+3万円</Text>
-              {" "}増加。5年間で合計{" "}
-              <Text style={styles.insightHighlight}>+23万円</Text>
-              {" "}の手取り増加です。
-            </Text>
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>今年の収入内訳</Text>
+          <Text style={styles.cardSubtitle}>
+            年収 {annualIncomeMan.toLocaleString()}万円 の内訳
+          </Text>
+          <View style={styles.chartContainer}>
+            <DonutChart
+              segments={[
+                { value: takeHomeMan, color: "#2ECC71", label: "手取り" },
+                { value: socialInsuranceMan, color: "#F5A623", label: "社会保険料" },
+                { value: totalTaxMan, color: "#E05252", label: "税金" },
+              ]}
+              size={180}
+              strokeWidth={32}
+              centerLabel={`${takeHomeRatio}%`}
+              centerSubLabel="手取り割合"
+            />
           </View>
-        )}
-      </View>
-
-      {/* 現在の収入内訳サマリー */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>今年の収入内訳</Text>
-        <View style={styles.chartContainer}>
-          <DonutChart
-            segments={[
-              { value: MOCK_TAKE_HOME, color: "#2ECC71", label: "手取り" },
-              { value: MOCK_SOCIAL_INSURANCE, color: "#F5A623", label: "社会保険料" },
-              { value: MOCK_TOTAL_TAX, color: "#E05252", label: "税金" },
-            ]}
-            size={180}
-            strokeWidth={32}
-            centerLabel={`${Math.round((MOCK_TAKE_HOME / MOCK_ANNUAL_INCOME) * 100)}%`}
-            centerSubLabel="手取り割合"
-          />
+          <View style={styles.legendRow}>
+            {[
+              { label: "手取り", value: takeHomeMan, color: "#2ECC71" },
+              { label: "社会保険料", value: socialInsuranceMan, color: "#F5A623" },
+              { label: "税金", value: totalTaxMan, color: "#E05252" },
+            ].map((item) => (
+              <View key={item.label} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                <Text style={styles.legendLabel}>{item.label}</Text>
+                <Text style={[styles.legendValue, { color: item.color }]}>{item.value}万円</Text>
+              </View>
+            ))}
+          </View>
         </View>
-        <View style={styles.legendRow}>
-          {[
-            { label: "手取り", value: MOCK_TAKE_HOME, color: "#2ECC71" },
-            { label: "社会保険料", value: MOCK_SOCIAL_INSURANCE, color: "#F5A623" },
-            { label: "税金", value: MOCK_TOTAL_TAX, color: "#E05252" },
-          ].map((item) => (
-            <View key={item.label} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-              <Text style={styles.legendLabel}>{item.label}</Text>
-              <Text style={[styles.legendValue, { color: item.color }]}>{item.value}万円</Text>
-            </View>
-          ))}
-        </View>
-      </View>
+      )}
     </View>
   );
 
-  // ② 将来予測
-  const renderFutureTab = () => (
-    <View>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>65歳までの手取り予測</Text>
-        <Text style={styles.cardSubtitle}>年収上昇率2%・現状の控除条件を維持した場合</Text>
-        <View style={styles.chartContainer}>
-          <BarChart
-            data={futureData}
-            width={CHART_WIDTH}
-            height={180}
-            highlightIndex={0}
-            unit="万円"
-          />
+  const renderFutureTab = () => {
+    const futureTotal = futureData.reduce((sum, d) => sum + d.value * 5, 0);
+    const lastFuture = futureData[futureData.length - 1]?.value ?? 0;
+    // 積立シミュレーション（手取りの40%を年利3%で複利運用）
+    const yearlyInvest = takeHomeMan * 0.4;
+    const simulate = (years: number) => {
+      let total = 0;
+      for (let i = 0; i < years; i++) {
+        total = (total + yearlyInvest) * 1.03;
+      }
+      return Math.round(total);
+    };
+    return (
+      <View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>65歳までの手取り予測</Text>
+          <Text style={styles.cardSubtitle}>
+            現在の年収 {annualIncomeMan}万円・年収上昇率2%・現状の控除条件を維持した場合
+          </Text>
+          <View style={styles.chartContainer}>
+            <BarChart
+              data={futureData}
+              width={CHART_WIDTH}
+              height={180}
+              highlightIndex={0}
+              unit="万円"
+            />
+          </View>
+          <View style={styles.insightBox}>
+            <Text style={styles.insightIcon}>🔮</Text>
+            <Text style={styles.insightText}>
+              65歳時点での推定手取りは約{" "}
+              <Text style={styles.insightHighlight}>{lastFuture}万円</Text>
+              。{age}歳から65歳までの累計手取りは約{" "}
+              <Text style={styles.insightHighlight}>
+                {futureTotal.toLocaleString()}万円
+              </Text>
+              （概算）です。
+            </Text>
+          </View>
         </View>
-        <View style={styles.insightBox}>
-          <Text style={styles.insightIcon}>🔮</Text>
-          <Text style={styles.insightText}>
-            65歳時点での推定手取りは約{" "}
-            <Text style={styles.insightHighlight}>
-              {futureData[futureData.length - 1]?.value ?? 0}万円
-            </Text>
-            。30年間の累計手取りは約{" "}
-            <Text style={styles.insightHighlight}>
-              {futureData.reduce((sum, d) => sum + d.value * 5, 0).toLocaleString()}万円
-            </Text>
-            （概算）です。
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>資産推移シミュレーション</Text>
+          <Text style={styles.cardSubtitle}>
+            手取り {takeHomeMan}万円 の40%（{Math.round(yearlyInvest)}万円/年）を積立投資（年利3%想定）
+          </Text>
+          <View style={styles.simulationGrid}>
+            {[
+              { label: `5年後（${age + 5}歳）`, years: 5 },
+              { label: `10年後（${age + 10}歳）`, years: 10 },
+              { label: `20年後（${age + 20}歳）`, years: 20 },
+              { label: `30年後（${age + 30}歳）`, years: 30 },
+            ].map((item) => (
+              <View key={item.label} style={styles.simulationCard}>
+                <Text style={styles.simulationLabel}>{item.label}</Text>
+                <Text style={styles.simulationAmount}>
+                  {simulate(item.years).toLocaleString()}
+                  <Text style={styles.simulationUnit}>万円</Text>
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.noticeText}>
+            ※ 概算値です。実際の運用成績は変動します。
           </Text>
         </View>
       </View>
+    );
+  };
 
-      {/* 資産推移シミュレーション */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>資産推移シミュレーション</Text>
-        <Text style={styles.cardSubtitle}>手取りの40%を毎年積立投資（年利3%想定）</Text>
-        <View style={styles.simulationGrid}>
-          {[
-            { age: 40, label: "5年後（40歳）", amount: Math.round(MOCK_TAKE_HOME * 0.4 * 5 * 1.08) },
-            { age: 45, label: "10年後（45歳）", amount: Math.round(MOCK_TAKE_HOME * 0.4 * 10 * 1.16) },
-            { age: 55, label: "20年後（55歳）", amount: Math.round(MOCK_TAKE_HOME * 0.4 * 20 * 1.35) },
-            { age: 65, label: "30年後（65歳）", amount: Math.round(MOCK_TAKE_HOME * 0.4 * 30 * 1.56) },
-          ].map((item) => (
-            <View key={item.age} style={styles.simulationCard}>
-              <Text style={styles.simulationLabel}>{item.label}</Text>
-              <Text style={styles.simulationAmount}>
-                {item.amount.toLocaleString()}
-                <Text style={styles.simulationUnit}>万円</Text>
-              </Text>
-            </View>
-          ))}
-        </View>
-        <Text style={styles.noticeText}>
-          ※ 概算値です。実際の運用成績は変動します。
-        </Text>
-      </View>
-    </View>
-  );
-
-  // ③ 税の使い道
   const renderTaxUsageTab = () => (
     <View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>あなたの税金の使い道</Text>
         <Text style={styles.cardSubtitle}>
-          今年の推定納税額 {MOCK_TOTAL_TAX}万円 の内訳（令和8年度一般会計予算ベース）
+          今年の推定納税額 {totalTaxMan}万円 の内訳（令和8年度一般会計予算ベース）
         </Text>
-
         {taxUsageData.map((item) => (
           <HorizontalBar
             key={item.label}
@@ -304,7 +357,6 @@ export default function AnalysisScreen() {
             unit="円"
           />
         ))}
-
         <View style={styles.insightBox}>
           <Text style={styles.insightIcon}>🏥</Text>
           <Text style={styles.insightText}>
@@ -313,31 +365,45 @@ export default function AnalysisScreen() {
             {" "}が社会保障（医療・年金・介護）に使われています。
             あなたの税金から約{" "}
             <Text style={styles.insightHighlight}>
-              {Math.round(MOCK_TOTAL_TAX * 0.335)}万円
+              {Math.round(totalTaxMan * 0.335)}万円
             </Text>
             {" "}が社会保障費に充当されています。
           </Text>
         </View>
       </View>
 
-      {/* 社会保険料の使い道 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>社会保険料の内訳</Text>
         <Text style={styles.cardSubtitle}>
-          年間社会保険料 {MOCK_SOCIAL_INSURANCE}万円 の内訳
+          年間社会保険料 {socialInsuranceMan}万円 の内訳
         </Text>
-        {[
-          { label: "厚生年金保険料", amount: Math.round(MOCK_SOCIAL_INSURANCE * 0.62), color: "#1A6FD4" },
-          { label: "健康保険料", amount: Math.round(MOCK_SOCIAL_INSURANCE * 0.28), color: "#2ECC71" },
-          { label: "介護保険料", amount: Math.round(MOCK_SOCIAL_INSURANCE * 0.05), color: "#F5A623" },
-          { label: "雇用保険料", amount: Math.round(MOCK_SOCIAL_INSURANCE * 0.03), color: "#E05252" },
-          { label: "子ども・子育て支援金", amount: Math.round(MOCK_SOCIAL_INSURANCE * 0.02), color: "#9B59B6" },
+        {result ? [
+          { label: "厚生年金保険料", amount: Math.round(result.pensionInsurance / 10_000), color: "#1A6FD4" },
+          { label: "健康保険料", amount: Math.round(result.healthInsurance / 10_000), color: "#2ECC71" },
+          { label: "介護保険料", amount: Math.round(result.nursingInsurance / 10_000), color: "#F5A623" },
+          { label: "雇用保険料", amount: Math.round(result.employmentInsurance / 10_000), color: "#E05252" },
+          { label: "子ども・子育て支援金", amount: Math.round(result.kodomoKosodate / 10_000), color: "#9B59B6" },
         ].map((item) => (
           <HorizontalBar
             key={item.label}
             label={item.label}
             value={item.amount * 10_000}
-            maxValue={Math.round(MOCK_SOCIAL_INSURANCE * 0.62) * 10_000}
+            maxValue={Math.round(result.pensionInsurance)}
+            color={item.color}
+            unit="万円"
+          />
+        )) : [
+          { label: "厚生年金保険料", amount: Math.round(socialInsuranceMan * 0.62), color: "#1A6FD4" },
+          { label: "健康保険料", amount: Math.round(socialInsuranceMan * 0.28), color: "#2ECC71" },
+          { label: "介護保険料", amount: Math.round(socialInsuranceMan * 0.05), color: "#F5A623" },
+          { label: "雇用保険料", amount: Math.round(socialInsuranceMan * 0.03), color: "#E05252" },
+          { label: "子ども・子育て支援金", amount: Math.round(socialInsuranceMan * 0.02), color: "#9B59B6" },
+        ].map((item) => (
+          <HorizontalBar
+            key={item.label}
+            label={item.label}
+            value={item.amount * 10_000}
+            maxValue={Math.round(socialInsuranceMan * 0.62) * 10_000}
             color={item.color}
             unit="万円"
           />
@@ -346,13 +412,11 @@ export default function AnalysisScreen() {
     </View>
   );
 
-  // ④ 税務カレンダー
   const renderCalendarTab = () => (
     <View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>税務カレンダー 2026年</Text>
         <Text style={styles.cardSubtitle}>確定申告・住民税・年末調整などの年間スケジュール</Text>
-
         {TAX_CALENDAR.map((item) => {
           const isCurrentMonth = item.month === currentMonth;
           const isPastMonth = item.month < currentMonth;
@@ -390,7 +454,6 @@ export default function AnalysisScreen() {
         })}
       </View>
 
-      {/* 通知設定 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>リマインダー設定</Text>
         <Text style={styles.cardSubtitle}>重要な税務イベントの通知を受け取る</Text>
@@ -415,19 +478,18 @@ export default function AnalysisScreen() {
     </View>
   );
 
-  // ⑤ 節税提案
   const renderTaxSavingTab = () => (
     <View>
-      {/* 節税サマリー */}
       <View style={[styles.card, styles.savingsSummaryCard]}>
         <Text style={styles.savingsSummaryTitle}>節税ポテンシャル</Text>
         <Text style={styles.savingsSummaryAmount}>
-          最大 {idecoAnnualSavings + furusatoSavings}万円/年
+          最大 {Math.max(0, idecoAnnualSavings + furusatoSavings)}万円/年
         </Text>
-        <Text style={styles.savingsSummarySubtext}>iDeCo + ふるさと納税の合計節税効果</Text>
+        <Text style={styles.savingsSummarySubtext}>
+          iDeCo（追加分）+ ふるさと納税の合計節税効果
+        </Text>
       </View>
 
-      {/* iDeCo提案 */}
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
           <Text style={styles.cardTitle}>iDeCo（個人型確定拠出年金）</Text>
@@ -442,7 +504,9 @@ export default function AnalysisScreen() {
         <View style={styles.idecoGrid}>
           <View style={styles.idecoItem}>
             <Text style={styles.idecoItemLabel}>現在の掛金</Text>
-            <Text style={styles.idecoItemValue}>0円/月</Text>
+            <Text style={styles.idecoItemValue}>
+              {currentIdecoMonthly > 0 ? `${currentIdecoMonthly.toLocaleString()}円/月` : "0円/月"}
+            </Text>
           </View>
           <View style={styles.idecoItemArrow}>
             <Text style={styles.idecoArrow}>→</Text>
@@ -457,19 +521,19 @@ export default function AnalysisScreen() {
 
         <View style={styles.idecoDetail}>
           <View style={styles.idecoDetailRow}>
-            <Text style={styles.idecoDetailLabel}>年間掛金</Text>
+            <Text style={styles.idecoDetailLabel}>年間掛金（上限）</Text>
             <Text style={styles.idecoDetailValue}>{(idecoMax * 12).toLocaleString()}円</Text>
           </View>
           <View style={styles.idecoDetailRow}>
             <Text style={styles.idecoDetailLabel}>所得税節税効果（概算）</Text>
             <Text style={[styles.idecoDetailValue, { color: "#2ECC71" }]}>
-              約{Math.round(idecoMax * 12 * 0.10 / 10_000)}万円/年
+              約{Math.round(idecoRemainingMonthly * 12 * effectiveTaxRate / 10_000)}万円/年
             </Text>
           </View>
           <View style={styles.idecoDetailRow}>
             <Text style={styles.idecoDetailLabel}>住民税節税効果（概算）</Text>
             <Text style={[styles.idecoDetailValue, { color: "#2ECC71" }]}>
-              約{Math.round(idecoMax * 12 * 0.10 / 10_000)}万円/年
+              約{Math.round(idecoRemainingMonthly * 12 * 0.10 / 10_000)}万円/年
             </Text>
           </View>
         </View>
@@ -479,7 +543,6 @@ export default function AnalysisScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ふるさと納税提案 */}
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
           <Text style={styles.cardTitle}>ふるさと納税</Text>
@@ -499,7 +562,7 @@ export default function AnalysisScreen() {
             {Math.round(furusatoOptimal / 10_000).toLocaleString()}万円
           </Text>
           <Text style={styles.furusatoNote}>
-            ※ ワンストップ特例利用の場合。実際の上限は所得・控除により異なります。
+            ※ 年収 {annualIncomeMan}万円 ベースの概算。ワンストップ特例利用の場合。
           </Text>
         </View>
 
@@ -524,7 +587,6 @@ export default function AnalysisScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* その他の節税手段 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>その他の節税手段</Text>
         {[
@@ -560,7 +622,6 @@ export default function AnalysisScreen() {
         ))}
       </View>
 
-      {/* レポート出力 */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>分析レポートの出力</Text>
         <Text style={styles.cardSubtitle}>
@@ -578,6 +639,17 @@ export default function AnalysisScreen() {
     </View>
   );
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "comparison": return renderComparisonTab();
+      case "future": return renderFutureTab();
+      case "taxUsage": return renderTaxUsageTab();
+      case "calendar": return renderCalendarTab();
+      case "taxSaving": return renderTaxSavingTab();
+      default: return null;
+    }
+  };
+
   return (
     <ScreenContainer containerClassName="bg-background">
       <ScrollView
@@ -587,10 +659,23 @@ export default function AnalysisScreen() {
         {/* ヘッダー */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>分析</Text>
-          <Text style={styles.headerSubtitle}>詳細な収入分析と節税アドバイス</Text>
-          <View style={styles.premiumBanner}>
-            <Text style={styles.premiumBannerText}>🔒 有料版専用機能</Text>
-          </View>
+          {hasData ? (
+            <Text style={styles.headerSubtitle}>
+              年収 {annualIncomeMan.toLocaleString()}万円・{age}歳のデータを分析中
+            </Text>
+          ) : (
+            <Text style={styles.headerSubtitle}>詳細な収入分析と節税アドバイス</Text>
+          )}
+          {!hasData && isLoaded && (
+            <View style={styles.noDataBanner}>
+              <Text style={styles.noDataBannerText}>
+                💡 計算タブで手取り計算を行うと、実際のデータで分析できます
+              </Text>
+            </View>
+          )}
+          {!isLoaded && (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+          )}
         </View>
 
         {/* サブタブナビゲーション */}
@@ -654,21 +739,20 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       marginTop: 4,
       marginBottom: 10,
     },
-    premiumBanner: {
-      backgroundColor: "#FFF3CD",
+    noDataBanner: {
+      backgroundColor: "#EBF4FF",
       borderRadius: 8,
       paddingHorizontal: 12,
-      paddingVertical: 6,
-      alignSelf: "flex-start",
+      paddingVertical: 8,
       borderWidth: 1,
-      borderColor: "#F5A623",
+      borderColor: "#1A6FD4",
     },
-    premiumBannerText: {
+    noDataBannerText: {
       fontSize: 12,
-      fontWeight: "600",
-      color: "#8B5E00",
+      fontWeight: "500",
+      color: "#1A4A8A",
+      lineHeight: 18,
     },
-    // サブタブ
     tabScrollView: {
       marginBottom: 16,
       marginHorizontal: -20,
@@ -698,7 +782,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: "#FFFFFF",
       fontWeight: "600",
     },
-    // サブトグル（比較グラフ内）
     subToggle: {
       flexDirection: "row",
       backgroundColor: colors.surface,
@@ -731,7 +814,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.foreground,
       fontWeight: "600",
     },
-    // カード
     card: {
       backgroundColor: colors.surface,
       borderRadius: 16,
@@ -769,7 +851,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       alignItems: "center",
       marginBottom: 12,
     },
-    // インサイトボックス
     insightBox: {
       flexDirection: "row",
       backgroundColor: colors.background,
@@ -791,7 +872,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "700",
       color: colors.primary,
     },
-    // 凡例
     legendRow: {
       gap: 8,
     },
@@ -814,7 +894,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 13,
       fontWeight: "700",
     },
-    // シミュレーショングリッド
     simulationGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -849,7 +928,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.muted,
       lineHeight: 16,
     },
-    // カレンダー
     calendarItem: {
       flexDirection: "row",
       alignItems: "flex-start",
@@ -925,7 +1003,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "700",
       color: "#FFFFFF",
     },
-    // 通知設定
     notificationRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -966,7 +1043,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: "#8B5E00",
       textAlign: "center",
     },
-    // 節税提案
     savingsSummaryCard: {
       backgroundColor: colors.primary,
       alignItems: "center",
@@ -999,7 +1075,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "700",
       color: colors.primary,
     },
-    // iDeCo
     idecoGrid: {
       flexDirection: "row",
       alignItems: "center",
@@ -1057,7 +1132,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "600",
       color: colors.foreground,
     },
-    // ふるさと納税
     furusatoBox: {
       backgroundColor: "#E8F8EF",
       borderRadius: 12,
@@ -1112,7 +1186,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 13,
       color: colors.foreground,
     },
-    // その他節税
     otherSavingItem: {
       flexDirection: "row",
       alignItems: "flex-start",
@@ -1145,7 +1218,6 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.muted,
       lineHeight: 18,
     },
-    // アクションボタン
     actionBtn: {
       backgroundColor: colors.primary,
       borderRadius: 12,

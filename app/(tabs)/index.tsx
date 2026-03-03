@@ -21,6 +21,7 @@ import { calculateTax, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
+import { saveCalculationResult } from "@/store/calculationStore";
 
 // モード定義
 type CalcMode = "simple" | "detailed";
@@ -164,6 +165,24 @@ export default function HomeScreen() {
       prefecture,
       birth_date: `${birthYear}-${String(birthMonth).padStart(2, "0")}-${String(birthDay).padStart(2, "0")}`,
     } as any).catch((e) => console.warn("[HomeScreen] settings save failed:", e));
+
+    // 計算結果をグローバルストアに保存（分析タブで参照するため）
+    const age = new Date().getFullYear() - parseInt(birthYear, 10);
+    saveCalculationResult(result, {
+      annualIncome: parseFloat(annualIncome),
+      age,
+      prefecture,
+      hasSpouseDeduction,
+      childrenUnder19,
+      childrenUnder23,
+      mode,
+      idecoMonthly: idecoMonthly ? parseInt(idecoMonthly, 10) : undefined,
+      furusatoAmount: furusatoAmount ? parseInt(furusatoAmount, 10) : undefined,
+      housingLoanBalance: housingLoanBalance ? parseInt(housingLoanBalance, 10) : undefined,
+      lifeInsurancePremium: lifeInsurancePremium ? parseInt(lifeInsurancePremium, 10) : undefined,
+      medicalExpenses: medicalExpenses ? parseInt(medicalExpenses, 10) : undefined,
+      calculatedAt: new Date().toISOString(),
+    }).catch((e) => console.warn("[HomeScreen] store save failed:", e));
 
     router.push({
       pathname: "/result",

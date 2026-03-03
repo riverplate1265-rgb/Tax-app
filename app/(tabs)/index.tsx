@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ScrollView,
   Text,
@@ -20,6 +20,8 @@ import { ScreenContainer } from "@/components/screen-container";
 import { PREFECTURES } from "@/lib/constants";
 import { calculateTax, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
+import { useAnnualSettings } from "@/hooks/use-annual-settings";
+import { useAuthLink } from "@/hooks/use-auth-link";
 
 // モード定義
 type CalcMode = "simple" | "detailed";
@@ -28,14 +30,26 @@ export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
 
+  // 認証・データ永続化
+  const { supabaseUser, signInAnonymously } = useAuthLink();
+  const { settings, save, saveCalculationCache, saving } = useAnnualSettings({
+    userId: supabaseUser?.id ?? null,
+    year: new Date().getFullYear(),
+  });
+
+  // アプリ起動時に匿名認証を試みる
+  useEffect(() => {
+    signInAnonymously();
+  }, []);
+
   // モード状態
   const [mode, setMode] = useState<CalcMode>("simple");
 
-  // 入力状態（簡易モード）
-  const [birthYear, setBirthYear] = useState("");
-  const [birthMonth, setBirthMonth] = useState("");
-  const [birthDay, setBirthDay] = useState("");
-  const [annualIncome, setAnnualIncome] = useState("");
+  // 入力状態（簡易モード）- デフォルト値を設定
+  const [birthYear, setBirthYear] = useState("1990");
+  const [birthMonth, setBirthMonth] = useState("1");
+  const [birthDay, setBirthDay] = useState("1");
+  const [annualIncome, setAnnualIncome] = useState("500");
   const [hasSpouseDeduction, setHasSpouseDeduction] = useState(false);
   const [childrenUnder19, setChildrenUnder19] = useState(0);
   const [childrenUnder23, setChildrenUnder23] = useState(0);
@@ -81,7 +95,7 @@ export default function HomeScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCalculate = () => {
+  const handleCalculate = async () => {
     if (!validate()) {
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -109,6 +123,22 @@ export default function HomeScreen() {
     };
 
     const result = calculateTax(input);
+
+    // 計算結果をキャッシュ保存（バックグラウンド）
+    saveCalculationCache({
+      cached_take_home: result.takeHome,
+      cached_total_tax: result.totalTax,
+      cached_social_insurance: result.totalSocialInsurance,
+    }).catch((e) => console.warn("[HomeScreen] cache save failed:", e));
+
+    // 入力設定を保存（バックグラウンド）
+    save({
+      annual_income: parseFloat(annualIncome),
+      prefecture,
+      birth_year: parseInt(birthYear, 10),
+      birth_month: parseInt(birthMonth, 10),
+      birth_day: parseInt(birthDay, 10),
+    } as any).catch((e) => console.warn("[HomeScreen] settings save failed:", e));
 
     router.push({
       pathname: "/result",

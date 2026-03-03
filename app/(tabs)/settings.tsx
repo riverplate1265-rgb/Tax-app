@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ScrollView,
   Text,
@@ -10,11 +10,15 @@ import {
   TextInput,
   Modal,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { PREFECTURES } from "@/lib/constants";
+import { useAuthLink } from "@/hooks/use-auth-link";
+import { useAnnualSettings } from "@/hooks/use-annual-settings";
+import { upsertProfile, getProfile } from "@/lib/supabaseDb";
 
 type WorkClassification =
   | "会社員（企業年金なし）"
@@ -32,11 +36,33 @@ const WORK_CLASSIFICATIONS: WorkClassification[] = [
 export default function SettingsScreen() {
   const colors = useColors();
 
-  // プロフィール状態
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Supabase 認証・データ連携
+  const {
+    supabaseUser,
+    isAnonymous,
+    isAuthenticated,
+    linkState,
+    linkError,
+    migratedCount,
+    signInAnonymously,
+    linkWithGoogle,
+    linkWithApple,
+    signOut,
+  } = useAuthLink();
+
+  const currentYear = new Date().getFullYear();
+  const { settings, save, saving, load } = useAnnualSettings({
+    userId: supabaseUser?.id ?? null,
+    year: currentYear,
+  });
+
+  // プロフィール状態（ローカルUI用）
+  const isLoggedIn = isAuthenticated || isAnonymous;
   const [isPremium, setIsPremium] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // プロフィール入力
   const [birthYear, setBirthYear] = useState("");
@@ -58,11 +84,54 @@ export default function SettingsScreen() {
 
   const styles = createStyles(colors);
 
+  // 起動時に匿名認証
+  useEffect(() => {
+    signInAnonymously();
+  }, []);
+
+  // Supabase から設定を読み込んでフォームに反映
+  useEffect(() => {
+    if (settings) {
+      if (settings.annual_income) setAnnualIncome(String(settings.annual_income));
+      if (settings.monthly_income) setMonthlyIncome(String(settings.monthly_income));
+      if (settings.bonus_amount) setBonusAmount(String(settings.bonus_amount));
+      if (settings.ideco_monthly) setIdecoMonthly(String(settings.ideco_monthly));
+      if (settings.furusato_amount) setFurusatoAmount(String(settings.furusato_amount));
+      if (settings.housing_loan_balance) setHousingLoanBalance(String(settings.housing_loan_balance));
+      if (settings.prefecture) setPrefecture(settings.prefecture);
+    }
+  }, [settings]);
+
+  // プロフィールを Supabase から読み込む
+  useEffect(() => {
+    if (!supabaseUser) return;
+    getProfile(supabaseUser.id).then((profile) => {
+      if (!profile) return;
+      if (profile.birth_year) setBirthYear(String(profile.birth_year));
+      if (profile.birth_month) setBirthMonth(String(profile.birth_month));
+      if (profile.birth_day) setBirthDay(String(profile.birth_day));
+      if (profile.work_classification) setWorkClass(profile.work_classification as WorkClassification);
+      if (profile.has_spouse !== undefined) setHasSpouse(profile.has_spouse);
+      if (profile.children_count !== undefined) setChildrenCount(profile.children_count);
+      if (profile.is_premium !== undefined) setIsPremium(profile.is_premium);
+    });
+  }, [supabaseUser]);
+
+  // 移行完了通知
+  useEffect(() => {
+    if (migratedCount > 0) {
+      Alert.alert(
+        "データ移行完了",
+        `ゲストモードで保存した ${migratedCount} 年分のデータをアカウントに引き継ぎました。`,
+        [{ text: "OK" }]
+      );
+    }
+  }, [migratedCount]);
+
   const handleGuestLogin = () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    setIsLoggedIn(true);
     setShowAuthModal(false);
   };
 
@@ -72,6 +141,48 @@ export default function SettingsScreen() {
     }
     setIsPremium(true);
     setShowPremiumModal(false);
+  };
+
+  // プロフィールを保存する
+  const handleSaveProfile = async () => {
+    if (!supabaseUser) return;
+    setIsSavingProfile(true);
+    try {
+      await upsertProfile(supabaseUser.id, {
+        birth_year: birthYear ? parseInt(birthYear, 10) : null,
+        birth_month: birthMonth ? parseInt(birthMonth, 10) : null,
+        birth_day: birthDay ? parseInt(birthDay, 10) : null,
+        work_classification: workClass as any,
+        has_spouse: hasSpouse,
+        children_count: childrenCount,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (e) {
+      Alert.alert("エラー", "プロフィールの保存に失敗しました");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // 年次データを保存する
+  const handleSaveAnnualSettings = async () => {
+    const success = await save({
+      annual_income: annualIncome ? parseFloat(annualIncome) : null,
+      monthly_income: monthlyIncome ? parseFloat(monthlyIncome) : null,
+      bonus_amount: bonusAmount ? parseFloat(bonusAmount) : null,
+      ideco_monthly: idecoMonthly ? parseInt(idecoMonthly, 10) : null,
+      furusato_amount: furusatoAmount ? parseInt(furusatoAmount, 10) : null,
+      housing_loan_balance: housingLoanBalance ? parseInt(housingLoanBalance, 10) : null,
+      prefecture,
+    });
+    if (success) {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }
   };
 
   return (
@@ -400,11 +511,20 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {isPremium && (
-            <TouchableOpacity style={styles.saveBtn} activeOpacity={0.85}>
-              <Text style={styles.saveBtnText}>データを保存する</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+            onPress={handleSaveAnnualSettings}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {saveSuccess ? "✓ 保存しました" : "年次データを保存する"}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* アプリ情報 */}
@@ -425,11 +545,29 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* ログアウトボタン */}
+        {/* プロフィール保存ボタン */}
         {isLoggedIn && (
           <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={handleSaveProfile}
+            disabled={isSavingProfile}
+            activeOpacity={0.85}
+          >
+            {isSavingProfile ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {saveSuccess ? "✓ プロフィールを保存しました" : "プロフィールを保存する"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* ログアウトボタン */}
+        {isAuthenticated && (
+          <TouchableOpacity
             style={styles.logoutBtn}
-            onPress={() => setIsLoggedIn(false)}
+            onPress={signOut}
             activeOpacity={0.8}
           >
             <Text style={styles.logoutBtnText}>ログアウト</Text>
@@ -459,10 +597,10 @@ export default function SettingsScreen() {
 
             {/* 認証ボタン */}
             {[
-              { icon: "🍎", label: "Appleでサインイン", color: "#000000", textColor: "#FFFFFF" },
-              { icon: "🔵", label: "Googleでサインイン", color: "#FFFFFF", textColor: "#1A1A1A", border: true },
-              { icon: "💚", label: "LINEでサインイン", color: "#00B900", textColor: "#FFFFFF" },
-              { icon: "🟡", label: "Yahoo! JAPANでサインイン", color: "#FF0033", textColor: "#FFFFFF" },
+              { icon: "🍎", label: "Appleでサインイン", color: "#000000", textColor: "#FFFFFF", action: linkWithApple },
+              { icon: "🔵", label: "Googleでサインイン", color: "#FFFFFF", textColor: "#1A1A1A", border: true, action: linkWithGoogle },
+              { icon: "💚", label: "LINEでサインイン", color: "#00B900", textColor: "#FFFFFF", action: handleGuestLogin },
+              { icon: "🟡", label: "Yahoo! JAPANでサインイン", color: "#FF0033", textColor: "#FFFFFF", action: handleGuestLogin },
             ].map((provider) => (
               <TouchableOpacity
                 key={provider.label}
@@ -471,7 +609,7 @@ export default function SettingsScreen() {
                   { backgroundColor: provider.color },
                   provider.border && styles.authProviderBtnBorder,
                 ]}
-                onPress={handleGuestLogin}
+                onPress={provider.action}
                 activeOpacity={0.85}
               >
                 <Text style={styles.authProviderIcon}>{provider.icon}</Text>

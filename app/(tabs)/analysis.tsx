@@ -174,7 +174,7 @@ export default function AnalysisScreen() {
 
   // ---- タブコンテンツ ----
 
-  // 実質負担率の計算（会社負担の社会保険料を含む）
+   // 実質手取りの計算（会社負担の社保を含む）
   // 会社負担分：健康保険・介護保険・子ども・子育て支援金・厚生年金は各公労者負担分と同額
   // 雇用保険は会社負担分なし（労働者負担分のみ）
   const companyBurdenSocialInsurance = result ? (
@@ -183,8 +183,9 @@ export default function AnalysisScreen() {
   const totalBurdenIncludingCompany = result ? (
     result.annualIncome + companyBurdenSocialInsurance
   ) : annualIncomeMan * 10_000;
-  const realBurdenRatio = totalBurdenIncludingCompany > 0 ? Math.round(
-    ((result ? (result.totalSocialInsurance + result.totalTax + companyBurdenSocialInsurance) : 0) / totalBurdenIncludingCompany) * 1000
+  // 実質手取り = 手取り ÷ (収入 + 社保会社負担分)
+  const realTakeHomeRatio = totalBurdenIncludingCompany > 0 ? Math.round(
+    ((result ? result.takeHome : 0) / totalBurdenIncludingCompany) * 1000
   ) / 10 : 0;
 
   const renderComparisonTab = () => (
@@ -252,34 +253,34 @@ export default function AnalysisScreen() {
         </View>
       </View>
 
-      {/* 実質負担率カード */}
+      {/* 実質手取りカード */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>実質負担率</Text>
+        <Text style={styles.cardTitle}>実質手取り</Text>
         <Text style={styles.cardSubtitle}>
-          会社負担の社会保険料（労働者負担分と同額）を含めた実質的な負担割合{"\n"}実質負担率 = (税金 + 全社会保険料 + 会社負担分) ÷ (年収 + 会社負担分)
+          会社負担の社保を含めた実質的な手取り割合{"\n"}実質手取り = 手取り ÷ (収入 + 社保会社負担分)
         </Text>
         <View style={styles.realBurdenRow}>
-          {/* 左: 実質負担率の円グラフ */}
+          {/* 左: 実質手取りの円グラフ */}
           <View style={styles.realBurdenChartWrap}>
             <DonutChart
               segments={[
                 { value: takeHomeMan, color: "#2ECC71", label: "手取り" },
-                { value: socialInsuranceMan, color: "#F5A623", label: "社保(小子分)" },
-                { value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800", label: "社保(会社分)" },
+                { value: socialInsuranceMan, color: "#F5A623", label: "社保(自己負担)" },
+                { value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800", label: "社保(会社負担)" },
                 { value: totalTaxMan, color: "#E05252", label: "税金" },
               ]}
               size={140}
               strokeWidth={26}
-              centerLabel={`${realBurdenRatio}%`}
-              centerSubLabel="実質負担"
+              centerLabel={`${realTakeHomeRatio}%`}
+              centerSubLabel="実質手取り"
             />
           </View>
           {/* 右: 内訳リスト */}
           <View style={styles.realBurdenLegend}>
             {[
               { label: "手取り", value: takeHomeMan, color: "#2ECC71" },
-              { label: "社保(小子分)", value: socialInsuranceMan, color: "#F5A623" },
-              { label: "社保(会社分)", value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800" },
+              { label: "社保(自己負担)", value: socialInsuranceMan, color: "#F5A623" },
+              { label: "社保(会社負担)", value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800" },
               { label: "税金", value: totalTaxMan, color: "#E05252" },
             ].map((item) => (
               <View key={item.label} style={styles.realBurdenLegendItem}>
@@ -290,17 +291,17 @@ export default function AnalysisScreen() {
             ))}
             <View style={styles.realBurdenDivider} />
             <View style={styles.realBurdenLegendItem}>
-              <Text style={styles.realBurdenTotalLabel}>実質負担率</Text>
-              <Text style={[styles.realBurdenTotalValue, { color: "#E05252" }]}>{realBurdenRatio}%</Text>
+              <Text style={styles.realBurdenTotalLabel}>実質手取り</Text>
+              <Text style={[styles.realBurdenTotalValue, { color: "#2ECC71" }]}>{realTakeHomeRatio}%</Text>
             </View>
           </View>
         </View>
         <View style={styles.insightBox}>
           <Text style={styles.insightIcon}>📊</Text>
           <Text style={styles.insightText}>
-            会社負担の社会保険料（健康保険・介護保険・子ども・子育て支援金・厚生年金）を含めると、実質的な負担率は{" "}
-            <Text style={[styles.insightHighlight, { color: "#E05252" }]}>{realBurdenRatio}%</Text>
-            {" "}になります。表面上の手取り割合{takeHomeRatio}%よりも実質の負担は大きいことがわかります。
+            会社負担の社保を含めると、実質的な手取り率は{" "}
+            <Text style={[styles.insightHighlight, { color: "#2ECC71" }]}>{realTakeHomeRatio}%</Text>
+            {" "}になります。表面上の手取り率{takeHomeRatio}%よりも会社負担分を加味すると実質の手取り割合は低くなります。
           </Text>
         </View>
       </View>
@@ -415,43 +416,6 @@ export default function AnalysisScreen() {
         </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>社会保険料の内訳</Text>
-        <Text style={styles.cardSubtitle}>
-          年間社会保険料 {socialInsuranceMan}万円 の内訳
-        </Text>
-        {result ? [
-          { label: "厚生年金保険料", amount: Math.round(result.pensionInsurance / 10_000), color: "#1A6FD4" },
-          { label: "健康保険料", amount: Math.round(result.healthInsurance / 10_000), color: "#2ECC71" },
-          { label: "介護保険料", amount: Math.round(result.nursingInsurance / 10_000), color: "#F5A623" },
-          { label: "雇用保険料", amount: Math.round(result.employmentInsurance / 10_000), color: "#E05252" },
-          { label: "子ども・子育て支援金", amount: Math.round(result.kodomoKosodate / 10_000), color: "#9B59B6" },
-        ].map((item) => (
-          <HorizontalBar
-            key={item.label}
-            label={item.label}
-            value={item.amount * 10_000}
-            maxValue={Math.round(result.pensionInsurance)}
-            color={item.color}
-            unit="万円"
-          />
-        )) : [
-          { label: "厚生年金保険料", amount: Math.round(socialInsuranceMan * 0.62), color: "#1A6FD4" },
-          { label: "健康保険料", amount: Math.round(socialInsuranceMan * 0.28), color: "#2ECC71" },
-          { label: "介護保険料", amount: Math.round(socialInsuranceMan * 0.05), color: "#F5A623" },
-          { label: "雇用保険料", amount: Math.round(socialInsuranceMan * 0.03), color: "#E05252" },
-          { label: "子ども・子育て支援金", amount: Math.round(socialInsuranceMan * 0.02), color: "#9B59B6" },
-        ].map((item) => (
-          <HorizontalBar
-            key={item.label}
-            label={item.label}
-            value={item.amount * 10_000}
-            maxValue={Math.round(socialInsuranceMan * 0.62) * 10_000}
-            color={item.color}
-            unit="万円"
-          />
-        ))}
-      </View>
     </View>
   );
 
@@ -755,6 +719,18 @@ export default function AnalysisScreen() {
 
         {/* タブコンテンツ */}
         {renderTabContent()}
+
+        {/* 有料バナー */}
+        <View style={styles.analysisPremiumBanner}>
+          <Text style={styles.analysisPremiumBannerIcon}>⭐</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.analysisPremiumBannerTitle}>有料版で詳細な分析ができるようになります</Text>
+            <Text style={styles.analysisPremiumBannerText}>複数年度比較・税理士監修の節税提案・詳細PDFレポートなど</Text>
+          </View>
+          <TouchableOpacity style={styles.analysisPremiumBannerBtn} activeOpacity={0.8}>
+            <Text style={styles.analysisPremiumBannerBtnText}>アップグレード</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </ScreenContainer>
   );
@@ -1384,6 +1360,42 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.muted,
       lineHeight: 18,
       fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    },
+    analysisPremiumBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#FFF8E1",
+      borderRadius: 12,
+      padding: 14,
+      marginTop: 16,
+      gap: 10,
+      borderWidth: 1,
+      borderColor: "#FFD54F",
+    },
+    analysisPremiumBannerIcon: {
+      fontSize: 22,
+    },
+    analysisPremiumBannerTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#E65100",
+      marginBottom: 2,
+    },
+    analysisPremiumBannerText: {
+      fontSize: 11,
+      color: "#795548",
+      lineHeight: 16,
+    },
+    analysisPremiumBannerBtn: {
+      backgroundColor: "#FF8F00",
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    analysisPremiumBannerBtnText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
   });
 }

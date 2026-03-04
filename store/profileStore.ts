@@ -8,6 +8,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const PROFILE_STORAGE_KEY = "@tax_app_profile";
 const ANNUAL_DATA_STORAGE_KEY = "@tax_app_annual_data";
 
+export type DisabilityType = "none" | "general" | "special" | "cohabiting_special";
+
 export interface ChildInfo {
   birthYear: string;
   birthMonth: string;
@@ -20,6 +22,8 @@ export interface ProfileData {
   birthMonth: string;
   birthDay: string;
   workPrefecture: string;   // 勤務都道府県
+  // 障害者
+  disabilityType: DisabilityType;  // none: なし, general: 障害者, special: 特別障害者, cohabiting_special: 同居特別障害者
   // 配偶者
   hasSpouse: boolean;
   spouseBirthYear: string;

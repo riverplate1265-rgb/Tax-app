@@ -25,6 +25,7 @@ import {
   loadAnnualData,
   getSavedYears,
   type ChildInfo,
+  type DisabilityType,
 } from "@/store/profileStore";
 
 /** 日付入力コンポーネント */
@@ -138,6 +139,9 @@ export default function SettingsScreen() {
   const [birthDay, setBirthDay] = useState("");
   const [workPrefecture, setWorkPrefecture] = useState("東京都");
   const [showWorkPrefModal, setShowWorkPrefModal] = useState(false);
+
+  // 障害者情報
+  const [disabilityType, setDisabilityType] = useState<DisabilityType>("none");
 
   // 配偶者情報
   const [hasSpouse, setHasSpouse] = useState(false);
@@ -296,6 +300,7 @@ export default function SettingsScreen() {
         birthMonth,
         birthDay,
         workPrefecture,
+        disabilityType,
         hasSpouse,
         spouseBirthYear,
         spouseBirthMonth,
@@ -488,8 +493,37 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
+           <View style={styles.divider} />
+          {/* 障害者区分 */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>障害者区分</Text>
+            <Text style={styles.fieldNote}>障害者控除：障害者 27万円、特別障害者 40万円、同居特別障害者 75万円</Text>
+            <View style={styles.segmentRow}>
+              {([
+                { key: "none" as DisabilityType, label: "なし" },
+                { key: "general" as DisabilityType, label: "障害者" },
+                { key: "special" as DisabilityType, label: "特別" },
+                { key: "cohabiting_special" as DisabilityType, label: "同居特別" },
+              ] as { key: DisabilityType; label: string }[]).map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.segmentBtn,
+                    disabilityType === item.key && styles.segmentBtnActive,
+                    !isPremium && { opacity: 0.4 },
+                  ]}
+                  onPress={() => isPremium && setDisabilityType(item.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.segmentBtnText,
+                    disabilityType === item.key && styles.segmentBtnTextActive,
+                  ]}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
           <View style={styles.divider} />
-
           {/* 配偶者トグル */}
           <View style={styles.switchRow}>
             <Text style={styles.fieldLabel}>配偶者あり</Text>
@@ -1661,6 +1695,34 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 16,
       color: colors.primary,
       fontWeight: "600",
+    },
+    // 障害者区分セグメント
+    segmentRow: {
+      flexDirection: "row" as const,
+      gap: 8,
+      marginTop: 10,
+      flexWrap: "wrap" as const,
+    },
+    segmentBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    segmentBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + "20",
+    },
+    segmentBtnText: {
+      fontSize: 13,
+      color: colors.muted,
+      fontWeight: "500" as const,
+    },
+    segmentBtnTextActive: {
+      color: colors.primary,
+      fontWeight: "700" as const,
     },
   });
 }

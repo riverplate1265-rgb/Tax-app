@@ -17,7 +17,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { PREFECTURES } from "@/lib/constants";
-import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, calcHousingLoanDeduction, calcIdecoDeduction, calcKyuyoShotokuKojo, type TaxInput } from "@/lib/taxCalculator";
+import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, calcHousingLoanDeduction, calcIdecoDeduction, calcKyuyoShotokuKojo, calcDisabilityDeduction, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
@@ -28,6 +28,7 @@ import {
   getSavedYears,
   subscribeToProfileStore,
   type AnnualData,
+  type DisabilityType,
 } from "@/store/profileStore";
 import { calcDependentSummary, calcSpouseDeduction } from "@/lib/dependentCalculator";
 
@@ -72,6 +73,9 @@ export default function HomeScreen() {
   const [lifeInsurancePremium, setLifeInsurancePremium] = useState("");
   const [medicalExpenses, setMedicalExpenses] = useState("");
 
+  // 障害者情報（設定タブから取得）
+  const [disabilityType, setDisabilityType] = useState<DisabilityType>("none");
+
   // 年次データ連携
   const [savedYears, setSavedYears] = useState<number[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -109,6 +113,8 @@ export default function HomeScreen() {
     if (profile.birthDay) setBirthDay(profile.birthDay);
     if (profile.workPrefecture) setPrefecture(profile.workPrefecture);
     if (profile.hasSpouse !== undefined) setHasSpouseDeduction(profile.hasSpouse);
+    if (profile.disabilityType) setDisabilityType(profile.disabilityType as DisabilityType);
+    else setDisabilityType("none");
 
     // 子供の生年月日から扶養区分を自動判定
     if (profile.children && profile.children.length > 0) {
@@ -311,6 +317,7 @@ export default function HomeScreen() {
       childrenUnder19,
       childrenUnder23,
       prefecture,
+      disabilityType: disabilityType !== "none" ? disabilityType : undefined,
       // 詳細モードの場合のみ追加フィールドを渡す
       ...(mode === "detailed" && {
         idecoMonthly: idecoMonthly ? parseInt(idecoMonthly, 10) : undefined,
@@ -554,7 +561,7 @@ export default function HomeScreen() {
 
             {/* 配偶者の扶養（簡易：トグル式、詳細：自動計算） */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>配偶者の扶養</Text>
+              <Text style={styles.fieldLabel}>{mode === "detailed" ? "配偶者控除" : "配偶者の扶養"}</Text>
               {mode === "simple" ? (
                 <View style={styles.switchRow}>
                   <Text style={styles.fieldHint}>配偶者控除（38万円）を適用する</Text>
@@ -663,6 +670,37 @@ export default function HomeScreen() {
                   <Text style={styles.fieldHint}>設定タブで子供の生年月日を入力すると自動計算されます</Text>
                 )}
               </View>
+            )}
+
+            {/* 障害者控除（詳細モードのみ表示） */}
+            {mode === "detailed" && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>障害者控除</Text>
+                  {disabilityType && disabilityType !== "none" ? (
+                    <View style={styles.autoCalcBox}>
+                      <Text style={styles.autoCalcIcon}>♿</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.autoCalcTitle}>設定タブの障害者情報から自動計算</Text>
+                        <Text style={styles.autoCalcText}>
+                          {disabilityType === "general" && "障害者"}
+                          {disabilityType === "special" && "特別障害者"}
+                          {disabilityType === "cohabiting_special" && "同居特別障害者"}
+                          {" → "}控除額 {calcDisabilityDeduction(disabilityType).toLocaleString()}円
+                        </Text>
+                        <Text style={styles.autoCalcSub}>
+                          {disabilityType === "general" && "障害者：27万円の所得控除"}
+                          {disabilityType === "special" && "特別障害者：40万円の所得控除"}
+                          {disabilityType === "cohabiting_special" && "同居特別障害者：75万円の所得控除"}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <Text style={styles.fieldHint}>設定タブの「基本プロフィール」で障害者区分を設定すると自動計算されます</Text>
+                  )}
+                </View>
+              </>
             )}
 
             {mode === "simple" && <View style={styles.divider} />}
@@ -807,6 +845,7 @@ export default function HomeScreen() {
               {/* 医療費控除額（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>医療費控除額</Text>
+
                 {medicalExpenses ? (
                   <View style={styles.autoCalcBox}>
                     <Text style={styles.autoCalcIcon}>🏥</Text>
@@ -827,6 +866,18 @@ export default function HomeScreen() {
                 ) : (
                   <Text style={styles.fieldHint}>設定タブの「年次データ」で医療費年間見込額を入力すると自動計算されます</Text>
                 )}
+              </View>
+
+              {/* 有料バナー */}
+              <View style={styles.premiumBanner}>
+                <Text style={styles.premiumBannerIcon}>⭐</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.premiumBannerTitle}>有料版で精密計算できるようになります</Text>
+                  <Text style={styles.premiumBannerText}>年間費用詳細入力・複数年度比較・税理士監修の計算エンジンなど</Text>
+                </View>
+                <TouchableOpacity style={styles.premiumBannerBtn} activeOpacity={0.8}>
+                  <Text style={styles.premiumBannerBtnText}>アップグレード</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -1395,6 +1446,42 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       height: 1,
       backgroundColor: colors.border,
       marginHorizontal: 20,
+    },
+    premiumBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#FFF8E1",
+      borderRadius: 12,
+      padding: 14,
+      marginTop: 16,
+      gap: 10,
+      borderWidth: 1,
+      borderColor: "#FFD54F",
+    },
+    premiumBannerIcon: {
+      fontSize: 22,
+    },
+    premiumBannerTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: "#E65100",
+      marginBottom: 2,
+    },
+    premiumBannerText: {
+      fontSize: 11,
+      color: "#795548",
+      lineHeight: 16,
+    },
+    premiumBannerBtn: {
+      backgroundColor: "#FF8F00",
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    premiumBannerBtnText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
   });
 }

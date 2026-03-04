@@ -13,9 +13,10 @@ export interface TaxInput {
   annualIncome: number; // 万円単位
   hasSpouseDeduction: boolean;
   spouseDeductionOverride?: number; // 配偶者控除額のオーバーライド（年収から自動計算時に使用）
-  childrenUnder19: number; // 16歳以上19歳未満
-  childrenUnder23: number; // 19歳以上22歳以下
+  childrenUnder19: number; // 16歳以19歳未満
+  childrenUnder23: number; // 19歳以22歳以下
   prefecture: string;
+  disabilityType?: "none" | "general" | "special" | "cohabiting_special"; // 障害者区分
   // 詳細モード専用（オプショナル）
   idecoMonthly?: number;          // iDeCo月額掛金（円）
   furusatoAmount?: number;        // ふるさと納税寄付金額（年間・円）
@@ -361,11 +362,17 @@ export function calculateTax(input: TaxInput): TaxResult {
     medicalExpenseDeduction = calcMedicalExpenseDeduction(input.medicalExpenses, totalIncome);
   }
 
+  // 障害者控除
+  const disabilityDeduction = input.disabilityType && input.disabilityType !== "none"
+    ? calcDisabilityDeduction(input.disabilityType)
+    : 0;
+
   // 課税所得（詳細モード：iDeCo・生命保険・医療費控除を追加）
   const taxableIncome = Math.max(
     0,
     kyuyoShotoku - kihonKojo - shakaihokenKojo - haiguushaKojo - fuyoKojo
     - idecoDeduction - lifeInsuranceDeduction - medicalExpenseDeduction
+    - disabilityDeduction
   );
 
   // 所得税額（千円未満切り捨て）
@@ -383,6 +390,7 @@ export function calculateTax(input: TaxInput): TaxResult {
     0,
     kyuyoShotoku - kihonKojoJumin - shakaihokenKojo - haiguushaKojo - fuyoKojo
     - idecoDeduction - lifeInsuranceDeduction - medicalExpenseDeduction
+    - disabilityDeduction
   );
 
   // 所得割（標準税率10%）
@@ -472,7 +480,20 @@ export function calculateTax(input: TaxInput): TaxResult {
 }
 
 /**
- * 金額を「◯◯万円」形式にフォーマット
+ * 障害者控除額を計算する
+ * general: 障害者 27万円, special: 特別障害者 40万円, cohabiting_special: 同居特別障害者 75万円
+ */
+export function calcDisabilityDeduction(disabilityType: "none" | "general" | "special" | "cohabiting_special"): number {
+  switch (disabilityType) {
+    case "general": return 270_000;
+    case "special": return 400_000;
+    case "cohabiting_special": return 750_000;
+    default: return 0;
+  }
+}
+
+/**
+ * 金額を「○○万円」形式にフォーマット
  */
 export function formatManYen(yen: number): string {
   const man = Math.round(yen / 10_000);

@@ -22,6 +22,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
 import { saveCalculationResult } from "@/store/calculationStore";
+import { loadProfile, subscribeToProfileStore } from "@/store/profileStore";
 
 // モード定義
 type CalcMode = "simple" | "detailed";
@@ -81,6 +82,35 @@ export default function HomeScreen() {
       }
     }
   }, [settings]);
+
+  // profileStore からプロフィールを読み込んで基本情報に反映する関数
+  const applyProfileToForm = async () => {
+    const profile = await loadProfile();
+    if (!profile) return;
+    if (profile.birthYear) setBirthYear(profile.birthYear);
+    if (profile.birthMonth) setBirthMonth(profile.birthMonth);
+    if (profile.birthDay) setBirthDay(profile.birthDay);
+    if (profile.prefecture) setPrefecture(profile.prefecture);
+    if (profile.hasSpouse !== undefined) setHasSpouseDeduction(profile.hasSpouse);
+    if (profile.annualIncome) setAnnualIncome(profile.annualIncome);
+    if (profile.idecoMonthly) setIdecoMonthly(profile.idecoMonthly);
+    if (profile.furusatoAmount) setFurusatoAmount(profile.furusatoAmount);
+    if (profile.housingLoanBalance) setHousingLoanBalance(profile.housingLoanBalance);
+    // 子供の人数（19歳未満として扱う）
+    if (profile.childrenCount !== undefined) {
+      setChildrenUnder19(profile.childrenCount);
+    }
+  };
+
+  // 起動時にprofileStoreから読み込む
+  useEffect(() => {
+    applyProfileToForm();
+    // 設定タブで保存されたとき（subscribeToProfileStore）に自動反映
+    const unsubscribe = subscribeToProfileStore(() => {
+      applyProfileToForm();
+    });
+    return unsubscribe;
+  }, []);
 
   const handleModeToggle = (isDetailed: boolean) => {
     if (Platform.OS !== "web") {

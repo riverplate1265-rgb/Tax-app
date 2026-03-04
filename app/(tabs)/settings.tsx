@@ -19,6 +19,7 @@ import { PREFECTURES } from "@/lib/constants";
 import { useAuthLink } from "@/hooks/use-auth-link";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { upsertProfile, getProfile } from "@/lib/supabaseDb";
+import { saveProfile, type ChildInfo } from "@/store/profileStore";
 
 type WorkClassification =
   | "会社員（企業年金なし）"
@@ -32,6 +33,73 @@ const WORK_CLASSIFICATIONS: WorkClassification[] = [
   "公務員",
   "自営業・フリーランス",
 ];
+
+/** 日付入力コンポーネント */
+function DateInput({
+  label,
+  year,
+  month,
+  day,
+  onYearChange,
+  onMonthChange,
+  onDayChange,
+  colors,
+  styles,
+}: {
+  label: string;
+  year: string;
+  month: string;
+  day: string;
+  onYearChange: (v: string) => void;
+  onMonthChange: (v: string) => void;
+  onDayChange: (v: string) => void;
+  colors: any;
+  styles: any;
+}) {
+  return (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.dateRow}>
+        <View style={styles.dateInputWrap}>
+          <TextInput
+            style={styles.dateInput}
+            placeholder="1990"
+            placeholderTextColor={colors.muted}
+            keyboardType="number-pad"
+            maxLength={4}
+            value={year}
+            onChangeText={onYearChange}
+          />
+          <Text style={styles.dateUnit}>年</Text>
+        </View>
+        <View style={styles.dateInputWrap}>
+          <TextInput
+            style={styles.dateInput}
+            placeholder="1"
+            placeholderTextColor={colors.muted}
+            keyboardType="number-pad"
+            maxLength={2}
+            value={month}
+            onChangeText={onMonthChange}
+          />
+          <Text style={styles.dateUnit}>月</Text>
+        </View>
+        <View style={styles.dateInputWrap}>
+          <TextInput
+            style={styles.dateInput}
+            placeholder="1"
+            placeholderTextColor={colors.muted}
+            keyboardType="number-pad"
+            maxLength={2}
+            value={day}
+            onChangeText={onDayChange}
+          />
+          <Text style={styles.dateUnit}>日</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -62,17 +130,27 @@ export default function SettingsScreen() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
+  const [annualSaveSuccess, setAnnualSaveSuccess] = useState(false);
 
-  // プロフィール入力
+  // 本人情報
   const [birthYear, setBirthYear] = useState("");
   const [birthMonth, setBirthMonth] = useState("");
   const [birthDay, setBirthDay] = useState("");
   const [workClass, setWorkClass] = useState<WorkClassification>("会社員（企業年金なし）");
   const [prefecture, setPrefecture] = useState("東京都");
-  const [hasSpouse, setHasSpouse] = useState(false);
-  const [childrenCount, setChildrenCount] = useState(0);
   const [showWorkModal, setShowWorkModal] = useState(false);
+  const [showPrefModal, setShowPrefModal] = useState(false);
+
+  // 配偶者情報
+  const [hasSpouse, setHasSpouse] = useState(false);
+  const [spouseBirthYear, setSpouseBirthYear] = useState("");
+  const [spouseBirthMonth, setSpouseBirthMonth] = useState("");
+  const [spouseBirthDay, setSpouseBirthDay] = useState("");
+
+  // 子供情報
+  const [childrenCount, setChildrenCount] = useState(0);
+  const [children, setChildren] = useState<ChildInfo[]>([]);
 
   // 年次設定
   const [annualIncome, setAnnualIncome] = useState("");
@@ -83,6 +161,22 @@ export default function SettingsScreen() {
   const [housingLoanBalance, setHousingLoanBalance] = useState("");
 
   const styles = createStyles(colors);
+
+  // 子供の人数が変わったとき、children配列を調整する
+  useEffect(() => {
+    setChildren((prev) => {
+      if (childrenCount > prev.length) {
+        const added = Array.from({ length: childrenCount - prev.length }, () => ({
+          birthYear: "",
+          birthMonth: "",
+          birthDay: "",
+        }));
+        return [...prev, ...added];
+      } else {
+        return prev.slice(0, childrenCount);
+      }
+    });
+  }, [childrenCount]);
 
   // 起動時に匿名認証
   useEffect(() => {
@@ -148,11 +242,21 @@ export default function SettingsScreen() {
     setShowPremiumModal(false);
   };
 
-  // プロフィールを保存する
+  // 子供の生年月日を更新するヘルパー
+  const updateChild = (index: number, field: keyof ChildInfo, value: string) => {
+    setChildren((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  // プロフィールを保存する（計算タブへの自動反映も行う）
   const handleSaveProfile = async () => {
     if (!supabaseUser) return;
     setIsSavingProfile(true);
     try {
+      // Supabase に保存
       await upsertProfile(supabaseUser.id, {
         birth_date: birthYear && birthMonth && birthDay
           ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
@@ -161,8 +265,32 @@ export default function SettingsScreen() {
         has_spouse: hasSpouse,
         children_count: childrenCount,
       });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+
+      // profileStore に保存（計算タブへの自動反映）
+      await saveProfile({
+        birthYear,
+        birthMonth,
+        birthDay,
+        workClass,
+        prefecture,
+        hasSpouse,
+        spouseBirthYear,
+        spouseBirthMonth,
+        spouseBirthDay,
+        childrenCount,
+        children,
+        annualIncome,
+        idecoMonthly,
+        furusatoAmount,
+        housingLoanBalance,
+        savedAt: new Date().toISOString(),
+      });
+
+      setProfileSaveSuccess(true);
+      setTimeout(() => setProfileSaveSuccess(false), 2500);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (e) {
       Alert.alert("エラー", "プロフィールの保存に失敗しました");
     } finally {
@@ -182,8 +310,8 @@ export default function SettingsScreen() {
       prefecture,
     });
     if (success) {
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      setAnnualSaveSuccess(true);
+      setTimeout(() => setAnnualSaveSuccess(false), 2500);
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -272,54 +400,44 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* プロフィール設定 */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 基本プロフィール（有料版のみ） */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>基本プロフィール</Text>
+          <View style={styles.premiumTag}>
+            <Text style={styles.premiumTagText}>PRO</Text>
+          </View>
         </View>
 
-        <View style={styles.card}>
-          {/* 生年月日 */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>生年月日</Text>
-            <View style={styles.dateRow}>
-              <View style={styles.dateInputWrap}>
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="1990"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  value={birthYear}
-                  onChangeText={setBirthYear}
-                />
-                <Text style={styles.dateUnit}>年</Text>
-              </View>
-              <View style={styles.dateInputWrap}>
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="1"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  value={birthMonth}
-                  onChangeText={setBirthMonth}
-                />
-                <Text style={styles.dateUnit}>月</Text>
-              </View>
-              <View style={styles.dateInputWrap}>
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="1"
-                  placeholderTextColor={colors.muted}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  value={birthDay}
-                  onChangeText={setBirthDay}
-                />
-                <Text style={styles.dateUnit}>日</Text>
-              </View>
+        <View style={[styles.card, !isPremium && styles.cardLocked]}>
+          {/* 有料版ロックオーバーレイ */}
+          {!isPremium && (
+            <View style={styles.lockOverlay}>
+              <Text style={styles.lockIcon}>🔒</Text>
+              <Text style={styles.lockText}>有料版でプロフィールを入力できます</Text>
+              <TouchableOpacity
+                style={styles.lockBtn}
+                onPress={() => setShowPremiumModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.lockBtnText}>アップグレード</Text>
+              </TouchableOpacity>
             </View>
-          </View>
+          )}
+
+          {/* 本人の生年月日 */}
+          <DateInput
+            label="あなたの生年月日"
+            year={birthYear}
+            month={birthMonth}
+            day={birthDay}
+            onYearChange={setBirthYear}
+            onMonthChange={setBirthMonth}
+            onDayChange={setBirthDay}
+            colors={colors}
+            styles={styles}
+          />
 
           <View style={styles.divider} />
 
@@ -328,7 +446,7 @@ export default function SettingsScreen() {
             <Text style={styles.fieldLabel}>職場区分</Text>
             <TouchableOpacity
               style={styles.selector}
-              onPress={() => setShowWorkModal(true)}
+              onPress={() => isPremium && setShowWorkModal(true)}
               activeOpacity={0.7}
             >
               <Text style={styles.selectorText}>{workClass}</Text>
@@ -338,7 +456,22 @@ export default function SettingsScreen() {
 
           <View style={styles.divider} />
 
-          {/* 配偶者 */}
+          {/* 都道府県 */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>居住都道府県</Text>
+            <TouchableOpacity
+              style={styles.selector}
+              onPress={() => isPremium && setShowPrefModal(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.selectorText}>{prefecture}</Text>
+              <Text style={styles.selectorChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* 配偶者トグル */}
           <View style={styles.switchRow}>
             <Text style={styles.fieldLabel}>配偶者あり</Text>
             <Switch
@@ -351,8 +484,27 @@ export default function SettingsScreen() {
               }}
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor="#FFFFFF"
+              disabled={!isPremium}
             />
           </View>
+
+          {/* 配偶者の生年月日（配偶者ありの場合のみ表示） */}
+          {hasSpouse && (
+            <>
+              <View style={styles.divider} />
+              <DateInput
+                label="配偶者の生年月日"
+                year={spouseBirthYear}
+                month={spouseBirthMonth}
+                day={spouseBirthDay}
+                onYearChange={setSpouseBirthYear}
+                onMonthChange={setSpouseBirthMonth}
+                onDayChange={setSpouseBirthDay}
+                colors={colors}
+                styles={styles}
+              />
+            </>
+          )}
 
           <View style={styles.divider} />
 
@@ -361,27 +513,67 @@ export default function SettingsScreen() {
             <Text style={styles.fieldLabel}>子供の人数</Text>
             <View style={styles.stepper}>
               <TouchableOpacity
-                style={styles.stepperBtn}
-                onPress={() => setChildrenCount((v) => Math.max(0, v - 1))}
+                style={[styles.stepperBtn, !isPremium && { opacity: 0.4 }]}
+                onPress={() => isPremium && setChildrenCount((v) => Math.max(0, v - 1))}
                 activeOpacity={0.7}
               >
                 <Text style={styles.stepperBtnText}>−</Text>
               </TouchableOpacity>
               <Text style={styles.stepperValue}>{childrenCount}</Text>
               <TouchableOpacity
-                style={styles.stepperBtn}
-                onPress={() => setChildrenCount((v) => Math.min(10, v + 1))}
+                style={[styles.stepperBtn, !isPremium && { opacity: 0.4 }]}
+                onPress={() => isPremium && setChildrenCount((v) => Math.min(10, v + 1))}
                 activeOpacity={0.7}
               >
                 <Text style={styles.stepperBtnText}>＋</Text>
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* 子供の生年月日（人数分） */}
+          {children.map((child, i) => (
+            <React.Fragment key={i}>
+              <View style={styles.divider} />
+              <DateInput
+                label={`第${i + 1}子の生年月日`}
+                year={child.birthYear}
+                month={child.birthMonth}
+                day={child.birthDay}
+                onYearChange={(v) => updateChild(i, "birthYear", v)}
+                onMonthChange={(v) => updateChild(i, "birthMonth", v)}
+                onDayChange={(v) => updateChild(i, "birthDay", v)}
+                colors={colors}
+                styles={styles}
+              />
+            </React.Fragment>
+          ))}
         </View>
 
-        {/* 年次データ設定（2026年） */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* プロフィールを保存するボタン（基本プロフィールの直下） */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {isLoggedIn && isPremium && (
+          <TouchableOpacity
+            style={[styles.saveProfileBtn, isSavingProfile && { opacity: 0.7 }]}
+            onPress={handleSaveProfile}
+            disabled={isSavingProfile}
+            activeOpacity={0.85}
+          >
+            {isSavingProfile ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveProfileBtnText}>
+                {profileSaveSuccess ? "✓ プロフィールを保存しました" : "プロフィールを保存する"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 年次データ設定 */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>年次データ（2026年）</Text>
+          <Text style={styles.sectionTitle}>年次データ（{currentYear}年）</Text>
           {isPremium && (
             <View style={styles.premiumTag}>
               <Text style={styles.premiumTagText}>PRO</Text>
@@ -526,7 +718,7 @@ export default function SettingsScreen() {
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <Text style={styles.saveBtnText}>
-                {saveSuccess ? "✓ 保存しました" : "年次データを保存する"}
+                {annualSaveSuccess ? "✓ 保存しました" : "年次データを保存する"}
               </Text>
             )}
           </TouchableOpacity>
@@ -542,31 +734,19 @@ export default function SettingsScreen() {
             { label: "バージョン", value: "2.0.0" },
             { label: "適用法令", value: "令和8年度（2026年）" },
             { label: "最終更新", value: "2026年3月" },
-          ].map((item) => (
-            <View key={item.label} style={styles.infoRow}>
+          ].map((item, idx) => (
+            <View
+              key={item.label}
+              style={[
+                styles.infoRow,
+                idx === 2 && { borderBottomWidth: 0 },
+              ]}
+            >
               <Text style={styles.infoLabel}>{item.label}</Text>
               <Text style={styles.infoValue}>{item.value}</Text>
             </View>
           ))}
         </View>
-
-        {/* プロフィール保存ボタン */}
-        {isLoggedIn && (
-          <TouchableOpacity
-            style={styles.saveBtn}
-            onPress={handleSaveProfile}
-            disabled={isSavingProfile}
-            activeOpacity={0.85}
-          >
-            {isSavingProfile ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.saveBtnText}>
-                {saveSuccess ? "✓ プロフィールを保存しました" : "プロフィールを保存する"}
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
 
         {/* ログアウトボタン */}
         {isAuthenticated && (
@@ -600,7 +780,6 @@ export default function SettingsScreen() {
               ソーシャルアカウントで簡単ログイン。データは安全に保管されます。
             </Text>
 
-            {/* 認証ボタン */}
             {[
               { icon: "🍎", label: "Appleでサインイン", color: "#000000", textColor: "#FFFFFF", action: linkWithApple },
               { icon: "🔵", label: "Googleでサインイン", color: "#FFFFFF", textColor: "#1A1A1A", border: true, action: linkWithGoogle },
@@ -661,7 +840,6 @@ export default function SettingsScreen() {
           </View>
 
           <ScrollView contentContainerStyle={styles.modalContent}>
-            {/* 価格 */}
             <View style={styles.premiumPriceCard}>
               <Text style={styles.premiumPriceLabel}>年額プラン</Text>
               <View style={styles.premiumPriceRow}>
@@ -671,14 +849,13 @@ export default function SettingsScreen() {
               <Text style={styles.premiumPriceNote}>月あたり約42円</Text>
             </View>
 
-            {/* 機能一覧 */}
             <Text style={styles.premiumFeaturesTitle}>プレミアム機能</Text>
             {[
+              { icon: "👤", title: "基本プロフィール入力", desc: "生年月日・配偶者・子供の情報を登録して精密な計算に活用" },
               { icon: "🎯", title: "詳細計算モード", desc: "iDeCo・ふるさと納税・住宅ローン控除を含む1円単位の精密計算" },
               { icon: "📊", title: "分析タブ全機能", desc: "同世代比較・将来予測・税の使い道・税務カレンダー" },
               { icon: "💡", title: "節税提案", desc: "あなたの状況に最適化されたiDeCo・ふるさと納税の推奨額を計算" },
               { icon: "📄", title: "PDFレポート出力", desc: "分析結果をPDFでダウンロード・共有" },
-              { icon: "🔔", title: "税務カレンダー通知", desc: "確定申告・住民税更新などの重要日程をプッシュ通知" },
               { icon: "☁️", title: "クラウド同期", desc: "複数デバイスでデータを同期" },
             ].map((feature) => (
               <View key={feature.title} style={styles.premiumFeatureItem}>
@@ -737,6 +914,41 @@ export default function SettingsScreen() {
               {item === workClass && <Text style={styles.workClassCheck}>✓</Text>}
             </TouchableOpacity>
           ))}
+        </View>
+      </Modal>
+
+      {/* 都道府県選択モーダル */}
+      <Modal
+        visible={showPrefModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPrefModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>都道府県を選択</Text>
+            <TouchableOpacity onPress={() => setShowPrefModal(false)}>
+              <Text style={styles.modalClose}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {PREFECTURES.map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={[styles.workClassItem, item === prefecture && styles.workClassItemSelected]}
+                onPress={() => {
+                  setPrefecture(item);
+                  setShowPrefModal(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.workClassText, item === prefecture && styles.workClassTextSelected]}>
+                  {item}
+                </Text>
+                {item === prefecture && <Text style={styles.workClassCheck}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       </Modal>
     </ScreenContainer>
@@ -921,7 +1133,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       backgroundColor: colors.surface,
       borderRadius: 16,
       paddingHorizontal: 16,
-      marginBottom: 20,
+      marginBottom: 8,
       borderWidth: 1,
       borderColor: colors.border,
       shadowColor: "#000",
@@ -940,7 +1152,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(255,255,255,0.85)",
+      backgroundColor: "rgba(255,255,255,0.88)",
       borderRadius: 16,
       alignItems: "center",
       justifyContent: "center",
@@ -1085,6 +1297,21 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.muted,
       marginLeft: 4,
     },
+    // プロフィール保存ボタン（基本プロフィールの直下）
+    saveProfileBtn: {
+      backgroundColor: "#0FA86E",
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: "center",
+      marginBottom: 24,
+      marginTop: 4,
+    },
+    saveProfileBtnText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
+    // 年次データ保存ボタン
     saveBtn: {
       backgroundColor: colors.primary,
       borderRadius: 12,
@@ -1123,6 +1350,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       borderWidth: 1.5,
       borderColor: colors.border,
       marginBottom: 20,
+      marginTop: 8,
     },
     logoutBtnText: {
       fontSize: 15,
@@ -1308,7 +1536,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       textAlign: "center",
       lineHeight: 18,
     },
-    // 職場区分モーダル
+    // 職場区分・都道府県モーダル
     workClassItem: {
       flexDirection: "row",
       alignItems: "center",

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ScrollView,
   Text,
@@ -26,7 +26,7 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const CHART_WIDTH = SCREEN_WIDTH - 64;
 
 // 同世代比較データ（国税庁「民間給与実態統計調査」ベース）
-const PEER_DATA_BY_AGE: Record<string, Array<{ label: string; value: number; color: string }>> = {
+const PEER_DATA_BY_AGE: Record<string, { label: string; value: number; color: string }[]> = {
   "20代": [
     { label: "20-24歳", value: 261, color: "#1A6FD4" },
     { label: "25-29歳", value: 348, color: "#D8E3EF" },
@@ -112,8 +112,6 @@ type AnalysisTab = "comparison" | "future" | "taxUsage" | "calendar" | "taxSavin
 export default function AnalysisScreen() {
   const colors = useColors();
   const [activeTab, setActiveTab] = useState<AnalysisTab>("comparison");
-  const [comparisonView, setComparisonView] = useState<"peer" | "yearly">("peer");
-
   // 実際の計算結果を取得
   const { result, input, isLoaded, hasData } = useCalculationResult();
 
@@ -176,91 +174,136 @@ export default function AnalysisScreen() {
 
   // ---- タブコンテンツ ----
 
+  // 実質負担率の計算（会社負担の社会保険料を含む）
+  // 会社負担分：健康保険・介護保険・子ども・子育て支援金・厚生年金は各公労者負担分と同額
+  // 雇用保険は会社負担分なし（労働者負担分のみ）
+  const companyBurdenSocialInsurance = result ? (
+    result.healthInsurance + result.nursingInsurance + result.kodomoKosodate + result.pensionInsurance
+  ) : 0;
+  const totalBurdenIncludingCompany = result ? (
+    result.annualIncome + companyBurdenSocialInsurance
+  ) : annualIncomeMan * 10_000;
+  const realBurdenRatio = totalBurdenIncludingCompany > 0 ? Math.round(
+    ((result ? (result.totalSocialInsurance + result.totalTax + companyBurdenSocialInsurance) : 0) / totalBurdenIncludingCompany) * 1000
+  ) / 10 : 0;
+
   const renderComparisonTab = () => (
     <View>
-      <View style={styles.subToggle}>
-        <TouchableOpacity
-          style={[styles.subToggleBtn, comparisonView === "peer" && styles.subToggleBtnActive]}
-          onPress={() => setComparisonView("peer")}
-        >
-          <Text style={[styles.subToggleBtnText, comparisonView === "peer" && styles.subToggleBtnTextActive]}>
-            同世代比較
+      {/* 2カラムレイアウト: 収入内訳（左）と同世代比較（右） */}
+      <View style={styles.comparisonTwoCol}>
+        {/* 左: 収入内訳 */}
+        <View style={[styles.card, styles.comparisonColCard]}>
+          <Text style={styles.cardTitle}>収入内訳</Text>
+          <Text style={styles.cardSubtitleSmall}>
+            年収 {annualIncomeMan}万円
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.subToggleBtn, comparisonView === "yearly" && styles.subToggleBtnActive]}
-          onPress={() => setComparisonView("yearly")}
-        >
-          <Text style={[styles.subToggleBtnText, comparisonView === "yearly" && styles.subToggleBtnTextActive]}>
-            収入内訳
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {comparisonView === "peer" ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>同世代の平均手取り比較</Text>
-          <Text style={styles.cardSubtitle}>
-            国税庁「民間給与実態統計調査」ベース（概算）・青色がご自身の手取り
-          </Text>
-          <View style={styles.chartContainer}>
-            <BarChart
-              data={peerData}
-              width={CHART_WIDTH}
-              height={180}
-              highlightIndex={peerData.findIndex((d) => d.color === "#1A6FD4")}
-              unit="万円"
-            />
-          </View>
-          <View style={styles.insightBox}>
-            <Text style={styles.insightIcon}>
-              {takeHomeMan >= peerAverage ? "🎉" : "💡"}
-            </Text>
-            <Text style={styles.insightText}>
-              {ageGroup}の平均手取りは{" "}
-              <Text style={styles.insightHighlight}>{peerAverage}万円</Text>
-              。あなたの手取り{" "}
-              <Text style={[styles.insightHighlight, { color: takeHomeMan >= peerAverage ? "#2ECC71" : "#E05252" }]}>
-                {takeHomeMan}万円
-              </Text>
-              {" "}は平均より約{Math.abs(takeHomeMan - peerAverage)}万円{takeHomeMan >= peerAverage ? "高い" : "低い"}水準です。
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>今年の収入内訳</Text>
-          <Text style={styles.cardSubtitle}>
-            年収 {annualIncomeMan.toLocaleString()}万円 の内訳
-          </Text>
-          <View style={styles.chartContainer}>
+          <View style={styles.chartContainerSmall}>
             <DonutChart
               segments={[
                 { value: takeHomeMan, color: "#2ECC71", label: "手取り" },
-                { value: socialInsuranceMan, color: "#F5A623", label: "社会保険料" },
+                { value: socialInsuranceMan, color: "#F5A623", label: "社保" },
                 { value: totalTaxMan, color: "#E05252", label: "税金" },
               ]}
-              size={180}
-              strokeWidth={32}
+              size={120}
+              strokeWidth={22}
               centerLabel={`${takeHomeRatio}%`}
-              centerSubLabel="手取り割合"
+              centerSubLabel="手取り"
             />
           </View>
-          <View style={styles.legendRow}>
+          <View style={styles.legendRowSmall}>
             {[
               { label: "手取り", value: takeHomeMan, color: "#2ECC71" },
-              { label: "社会保険料", value: socialInsuranceMan, color: "#F5A623" },
+              { label: "社保", value: socialInsuranceMan, color: "#F5A623" },
               { label: "税金", value: totalTaxMan, color: "#E05252" },
             ].map((item) => (
-              <View key={item.label} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                <Text style={styles.legendLabel}>{item.label}</Text>
-                <Text style={[styles.legendValue, { color: item.color }]}>{item.value}万円</Text>
+              <View key={item.label} style={styles.legendItemSmall}>
+                <View style={[styles.legendDotSmall, { backgroundColor: item.color }]} />
+                <Text style={styles.legendLabelSmall}>{item.label}</Text>
+                <Text style={[styles.legendValueSmall, { color: item.color }]}>{item.value}万</Text>
               </View>
             ))}
           </View>
         </View>
-      )}
+
+        {/* 右: 同世代比較 */}
+        <View style={[styles.card, styles.comparisonColCard]}>
+          <Text style={styles.cardTitle}>同世代比較</Text>
+          <Text style={styles.cardSubtitleSmall}>{ageGroup}の平均</Text>
+          <View style={styles.chartContainerSmall}>
+            <BarChart
+              data={peerData}
+              width={(SCREEN_WIDTH - 64) / 2 - 18}
+              height={130}
+              highlightIndex={peerData.findIndex((d) => d.color === "#1A6FD4")}
+              unit="万円"
+            />
+          </View>
+          <View style={styles.peerInsightBox}>
+            <Text style={styles.peerInsightText}>
+              平均{peerAverage}万円より
+            </Text>
+            <Text style={[
+              styles.peerInsightDiff,
+              { color: takeHomeMan >= peerAverage ? "#2ECC71" : "#E05252" }
+            ]}>
+              {takeHomeMan >= peerAverage ? "+" : ""}{takeHomeMan - peerAverage}万円
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* 実質負担率カード */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>実質負担率</Text>
+        <Text style={styles.cardSubtitle}>
+          会社負担の社会保険料（労働者負担分と同額）を含めた実質的な負担割合{"\n"}実質負担率 = (税金 + 全社会保険料 + 会社負担分) ÷ (年収 + 会社負担分)
+        </Text>
+        <View style={styles.realBurdenRow}>
+          {/* 左: 実質負担率の円グラフ */}
+          <View style={styles.realBurdenChartWrap}>
+            <DonutChart
+              segments={[
+                { value: takeHomeMan, color: "#2ECC71", label: "手取り" },
+                { value: socialInsuranceMan, color: "#F5A623", label: "社保(小子分)" },
+                { value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800", label: "社保(会社分)" },
+                { value: totalTaxMan, color: "#E05252", label: "税金" },
+              ]}
+              size={140}
+              strokeWidth={26}
+              centerLabel={`${realBurdenRatio}%`}
+              centerSubLabel="実質負担"
+            />
+          </View>
+          {/* 右: 内訳リスト */}
+          <View style={styles.realBurdenLegend}>
+            {[
+              { label: "手取り", value: takeHomeMan, color: "#2ECC71" },
+              { label: "社保(小子分)", value: socialInsuranceMan, color: "#F5A623" },
+              { label: "社保(会社分)", value: result ? Math.round(companyBurdenSocialInsurance / 10_000) : 0, color: "#FF9800" },
+              { label: "税金", value: totalTaxMan, color: "#E05252" },
+            ].map((item) => (
+              <View key={item.label} style={styles.realBurdenLegendItem}>
+                <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                <Text style={styles.realBurdenLegendLabel}>{item.label}</Text>
+                <Text style={[styles.realBurdenLegendValue, { color: item.color }]}>{item.value}万円</Text>
+              </View>
+            ))}
+            <View style={styles.realBurdenDivider} />
+            <View style={styles.realBurdenLegendItem}>
+              <Text style={styles.realBurdenTotalLabel}>実質負担率</Text>
+              <Text style={[styles.realBurdenTotalValue, { color: "#E05252" }]}>{realBurdenRatio}%</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.insightBox}>
+          <Text style={styles.insightIcon}>📊</Text>
+          <Text style={styles.insightText}>
+            会社負担の社会保険料（健康保険・介護保険・子ども・子育て支援金・厚生年金）を含めると、実質的な負担率は{" "}
+            <Text style={[styles.insightHighlight, { color: "#E05252" }]}>{realBurdenRatio}%</Text>
+            {" "}になります。表面上の手取り割合{takeHomeRatio}%よりも実質の負担は大きいことがわかります。
+          </Text>
+        </View>
+      </View>
     </View>
   );
 
@@ -345,7 +388,7 @@ export default function AnalysisScreen() {
         {taxUsageData.map((item) => (
           <HorizontalBar
             key={item.label}
-            label={item.label}
+            label={`${item.label}（${item.ratio}%）`}
             value={item.amount}
             maxValue={taxUsageData[0].amount}
             color={
@@ -354,7 +397,7 @@ export default function AnalysisScreen() {
               item.label === "地方交付税" ? "#1A6FD4" :
               "#F5A623"
             }
-            unit="円"
+            unit="万円"
           />
         ))}
         <View style={styles.insightBox}>
@@ -687,10 +730,10 @@ export default function AnalysisScreen() {
         >
           {[
             { id: "comparison" as AnalysisTab, label: "比較" },
-            { id: "future" as AnalysisTab, label: "将来予測" },
-            { id: "taxUsage" as AnalysisTab, label: "税の使い道" },
-            { id: "calendar" as AnalysisTab, label: "税務カレンダー" },
-            { id: "taxSaving" as AnalysisTab, label: "節税提案" },
+            { id: "future" as AnalysisTab, label: "予測" },
+            { id: "taxUsage" as AnalysisTab, label: "税金使途" },
+            { id: "calendar" as AnalysisTab, label: "カレンダー" },
+            { id: "taxSaving" as AnalysisTab, label: "節税" },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.id}
@@ -1228,6 +1271,119 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 14,
       fontWeight: "700",
       color: "#FFFFFF",
+    },
+    // 2カラム比較レイアウト
+    comparisonTwoCol: {
+      flexDirection: "row",
+      gap: 10,
+      marginBottom: 0,
+    },
+    comparisonColCard: {
+      flex: 1,
+      padding: 12,
+      marginBottom: 10,
+    },
+    cardSubtitleSmall: {
+      fontSize: 11,
+      color: colors.muted,
+      marginBottom: 8,
+      lineHeight: 16,
+    },
+    chartContainerSmall: {
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    legendRowSmall: {
+      gap: 4,
+    },
+    legendItemSmall: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    legendDotSmall: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    legendLabelSmall: {
+      flex: 1,
+      fontSize: 11,
+      color: colors.foreground,
+    },
+    legendValueSmall: {
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    peerInsightBox: {
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 8,
+      alignItems: "center",
+      marginTop: 4,
+    },
+    peerInsightText: {
+      fontSize: 11,
+      color: colors.muted,
+    },
+    peerInsightDiff: {
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    // 実質負担率スタイル
+    realBurdenRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 12,
+    },
+    realBurdenChartWrap: {
+      alignItems: "center",
+    },
+    realBurdenLegend: {
+      flex: 1,
+      gap: 6,
+    },
+    realBurdenLegendItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    realBurdenLegendLabel: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.foreground,
+    },
+    realBurdenLegendValue: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    realBurdenDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 4,
+    },
+    realBurdenTotalLabel: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.foreground,
+    },
+    realBurdenTotalValue: {
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    realBurdenFormulaBox: {
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      padding: 10,
+      marginTop: 8,
+    },
+    realBurdenFormulaText: {
+      fontSize: 11,
+      color: colors.muted,
+      lineHeight: 18,
+      fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
     },
   });
 }

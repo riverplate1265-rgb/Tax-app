@@ -29,7 +29,7 @@ import {
   subscribeToProfileStore,
   type AnnualData,
 } from "@/store/profileStore";
-import { calcDependentSummary } from "@/lib/dependentCalculator";
+import { calcDependentSummary, calcSpouseDeduction } from "@/lib/dependentCalculator";
 
 // モード定義
 type CalcMode = "simple" | "detailed";
@@ -77,6 +77,9 @@ export default function HomeScreen() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [showYearModal, setShowYearModal] = useState(false);
   const [dependentInfo, setDependentInfo] = useState<string>("");
+  // 配偶者控除額（設定タブの配偶者年収から自動計算）
+  const [spouseDeductionAmount, setSpouseDeductionAmount] = useState<number>(0);
+  const [spouseDeductionLabel, setSpouseDeductionLabel] = useState<string>("");
 
   // 設定タブのデータを読み込んで詳細モードに反映
   useEffect(() => {
@@ -124,6 +127,34 @@ export default function HomeScreen() {
       setChildrenUnder19(0);
       setChildrenUnder23(0);
       setDependentInfo("");
+    }
+
+    // 配偶者控除額を自動計算（設定タブの配偶者年収と本人年収から）
+    if (profile.hasSpouse) {
+      const allData = await loadAllAnnualData();
+      const yearData = allData[selectedYear];
+      const spouseIncome = yearData?.spouseIncome ? parseFloat(yearData.spouseIncome) : 0;
+      const myIncome = yearData?.annualIncome ? parseFloat(yearData.annualIncome) : parseFloat(annualIncome) || 0;
+      if (spouseIncome > 0) {
+        const deduction = calcSpouseDeduction(myIncome, spouseIncome);
+        setSpouseDeductionAmount(deduction);
+        if (deduction > 0) {
+          if (spouseIncome <= 103) {
+            setSpouseDeductionLabel(`配偶者控除 ${(deduction / 10000).toFixed(0)}万円（配偶者年収${spouseIncome}万円）`);
+          } else {
+            setSpouseDeductionLabel(`配偶者特別控除 ${(deduction / 10000).toFixed(0)}万円（配偶者年収${spouseIncome}万円）`);
+          }
+        } else {
+          setSpouseDeductionLabel(`配偶者控除なし（配偶者年収${spouseIncome}万円）`);
+        }
+      } else {
+        // 配偶者年収未入力の場合は満額38万円で計算
+        setSpouseDeductionAmount(380_000);
+        setSpouseDeductionLabel("配偶者控除 38万円（年収未入力のため満額適用）");
+      }
+    } else {
+      setSpouseDeductionAmount(0);
+      setSpouseDeductionLabel("");
     }
 
     // 保存済み年次データを読み込む
@@ -182,6 +213,33 @@ export default function HomeScreen() {
             .join("、");
           setDependentInfo(infoText);
         }
+      }
+
+      // 配偶者控除額を再計算
+      if (profile?.hasSpouse) {
+        const allData2 = await loadAllAnnualData();
+        const yearData2 = allData2[year];
+        const spouseIncome2 = yearData2?.spouseIncome ? parseFloat(yearData2.spouseIncome) : 0;
+        const myIncome2 = yearData2?.annualIncome ? parseFloat(yearData2.annualIncome) : parseFloat(annualIncome) || 0;
+        if (spouseIncome2 > 0) {
+          const deduction2 = calcSpouseDeduction(myIncome2, spouseIncome2);
+          setSpouseDeductionAmount(deduction2);
+          if (deduction2 > 0) {
+            if (spouseIncome2 <= 103) {
+              setSpouseDeductionLabel(`配偶者控除 ${(deduction2 / 10000).toFixed(0)}万円（配偶者年収${spouseIncome2}万円）`);
+            } else {
+              setSpouseDeductionLabel(`配偶者特別控除 ${(deduction2 / 10000).toFixed(0)}万円（配偶者年収${spouseIncome2}万円）`);
+            }
+          } else {
+            setSpouseDeductionLabel(`配偶者控除なし（配偶者年収${spouseIncome2}万円）`);
+          }
+        } else {
+          setSpouseDeductionAmount(380_000);
+          setSpouseDeductionLabel("配偶者控除 38万円（年収未入力のため満額適用）");
+        }
+      } else {
+        setSpouseDeductionAmount(0);
+        setSpouseDeductionLabel("");
       }
     }
     if (Platform.OS !== "web") {
@@ -243,7 +301,8 @@ export default function HomeScreen() {
     const input: TaxInput = {
       birthDate,
       annualIncome: parseFloat(annualIncome),
-      hasSpouseDeduction,
+      hasSpouseDeduction: spouseDeductionAmount > 0,
+      spouseDeductionOverride: spouseDeductionAmount > 0 ? spouseDeductionAmount : undefined,
       childrenUnder19,
       childrenUnder23,
       prefecture,
@@ -279,7 +338,7 @@ export default function HomeScreen() {
       annualIncome: parseFloat(annualIncome),
       age,
       prefecture,
-      hasSpouseDeduction,
+      hasSpouseDeduction: spouseDeductionAmount > 0,
       childrenUnder19,
       childrenUnder23,
       mode,
@@ -380,7 +439,7 @@ export default function HomeScreen() {
             <View style={styles.detailBanner}>
               <Text style={styles.detailBannerIcon}>✨</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.detailBannerTitle}>詳細モード：節税控除を反映</Text>
+                <Text style={styles.detailBannerTitle}>詳細モード：控除を反映</Text>
                 <Text style={styles.detailBannerText}>
                   iDeCo・ふるさと納税・住宅ローン控除を加味した精密計算を行います。
                 </Text>
@@ -465,89 +524,45 @@ export default function HomeScreen() {
 
             <View style={styles.divider} />
 
-            {/* 配偶者扶養 */}
-            <View style={styles.switchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>配偶者の扶養</Text>
-                <Text style={styles.fieldHint}>満額控除（38万円）で計算</Text>
-              </View>
-              <Switch
-                value={hasSpouseDeduction}
-                onValueChange={(v) => {
-                  if (Platform.OS !== "web") {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setHasSpouseDeduction(v);
-                }}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* 子供（16歳以上19歳未満） */}
-            <View style={styles.stepperRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>子供（16歳以上19歳未満）</Text>
-                <Text style={styles.fieldHint}>一般扶養控除 38万円/人</Text>
-              </View>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => adjustChildren("under19", -1)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.stepperBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{childrenUnder19}</Text>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => adjustChildren("under19", 1)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.stepperBtnText}>＋</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* 子供（19歳以上22歳以下） */}
-            <View style={styles.stepperRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>子供（19歳以上22歳以下）</Text>
-                <Text style={styles.fieldHint}>特定扶養控除 63万円/人</Text>
-              </View>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => adjustChildren("under23", -1)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.stepperBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{childrenUnder23}</Text>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => adjustChildren("under23", 1)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.stepperBtnText}>＋</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* 扶養自動判定の結果表示 */}
-            {dependentInfo !== "" && (
-              <View style={styles.dependentInfoBox}>
-                <Text style={styles.dependentInfoIcon}>👶</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.dependentInfoTitle}>設定の子供情報から自動判定</Text>
-                  <Text style={styles.dependentInfoText}>{dependentInfo}</Text>
+            {/* 配偶者控除額（自動計算） */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>配偶者控除額</Text>
+              {spouseDeductionLabel !== "" ? (
+                <View style={styles.autoCalcBox}>
+                  <Text style={styles.autoCalcIcon}>💑</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.autoCalcTitle}>設定タブの配偶者年収から自動計算</Text>
+                    <Text style={styles.autoCalcText}>{spouseDeductionLabel}</Text>
+                  </View>
                 </View>
-              </View>
-            )}
+              ) : (
+                <Text style={styles.fieldHint}>設定タブで配偶者情報を入力すると自動計算されます</Text>
+              )}
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* 扶養控除（子供・自動計算） */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>扶養控除額</Text>
+              {dependentInfo !== "" ? (
+                <View style={styles.autoCalcBox}>
+                  <Text style={styles.autoCalcIcon}>👶</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.autoCalcTitle}>設定の子供情報から自動判定</Text>
+                    <Text style={styles.autoCalcText}>{dependentInfo}</Text>
+                    {childrenUnder19 > 0 && (
+                      <Text style={styles.autoCalcSub}>一般扶養：{childrenUnder19}人 × 38万円</Text>
+                    )}
+                    {childrenUnder23 > 0 && (
+                      <Text style={styles.autoCalcSub}>特定扶養：{childrenUnder23}人 × 63万円</Text>
+                    )}
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.fieldHint}>設定タブで子供の生年月日を入力すると自動計算されます</Text>
+              )}
+            </View>
 
             <View style={styles.divider} />
 
@@ -565,12 +580,12 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* 詳細モード：節税控除フォーム */}
+          {/* 詳細モード：控除フォーム */}
           {mode === "detailed" && (
             <View style={styles.card}>
               <View style={styles.detailHeaderRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardSectionTitle}>節税控除の入力</Text>
+                  <Text style={styles.cardSectionTitle}>控除の入力</Text>
                   <Text style={styles.cardSectionSubtitle}>
                     入力した控除を加味して手取りを精密計算します
                   </Text>
@@ -714,7 +729,8 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <Text style={styles.disclaimer}>
-            ※ 本計算は概算です。実際の金額は給与明細・確定申告等でご確認ください。
+            ※ 本計算は概算です。実際の金額は給与明細・確定申告等でご確認ください。{"\n"}
+            ※ 配偶者控除・扶養控除は設定タブのデータから自動計算されます。
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -985,7 +1001,39 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: "#276749",
       fontWeight: "500",
     },
-    // 扶養自動判定ボックス
+    // 自動計算ボックス（配偶者控除・扶養控除）
+    autoCalcBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      backgroundColor: "#FFFBEB",
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "#F6AD55",
+      padding: 10,
+      marginTop: 4,
+      gap: 8,
+    },
+    autoCalcIcon: {
+      fontSize: 16,
+    },
+    autoCalcTitle: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: "#744210",
+      marginBottom: 2,
+    },
+    autoCalcText: {
+      fontSize: 11,
+      color: "#744210",
+      lineHeight: 16,
+    },
+    autoCalcSub: {
+      fontSize: 10,
+      color: "#92400E",
+      lineHeight: 15,
+      marginTop: 1,
+    },
+    // 扶養自動判定ボックス（後方互換のために残す）
     dependentInfoBox: {
       flexDirection: "row",
       alignItems: "flex-start",

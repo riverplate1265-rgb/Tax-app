@@ -116,13 +116,15 @@ export function HorizontalBar({
   unit = "万円",
 }: HorizontalBarProps) {
   const ratio = maxValue > 0 ? Math.min(value / maxValue, 1) : 0;
+  // unitが"万円"の場合は10000で割って表示、"円"の場合はそのまま表示
+  const displayValue = unit === "万円" ? Math.round(value / 10_000).toLocaleString() : Math.round(value).toLocaleString();
 
   return (
     <View style={{ marginBottom: 12 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
         <Text style={{ fontSize: 13, color: "#0D1B2A", fontWeight: "500" }}>{label}</Text>
         <Text style={{ fontSize: 13, color, fontWeight: "700" }}>
-          {Math.round(value / 10_000).toLocaleString()}{unit}
+          {displayValue}{unit}
         </Text>
       </View>
       <View style={{ height: 8, backgroundColor: "#D8E3EF", borderRadius: 4, overflow: "hidden" }}>

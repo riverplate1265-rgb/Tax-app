@@ -12,6 +12,7 @@ export interface TaxInput {
   birthDate: Date;
   annualIncome: number; // 万円単位
   hasSpouseDeduction: boolean;
+  spouseDeductionOverride?: number; // 配偶者控除額のオーバーライド（年収から自動計算時に使用）
   childrenUnder19: number; // 16歳以上19歳未満
   childrenUnder23: number; // 19歳以上22歳以下
   prefecture: string;
@@ -334,8 +335,10 @@ export function calculateTax(input: TaxInput): TaxResult {
   // 社会保険料控除（全額控除）
   const shakaihokenKojo = totalSocialInsurance;
 
-  // 配偶者控除（満額：38万円）
-  const haiguushaKojo = input.hasSpouseDeduction ? 380_000 : 0;
+  // 配偶者控除（年収から自動計算された場合はその値を使用、それ以外は満額38万円）
+  const haiguushaKojo = input.hasSpouseDeduction
+    ? (input.spouseDeductionOverride ?? 380_000)
+    : 0;
 
   // 扶養控除
   // 特定扶養親族（19歳以上22歳以下）: 63万円

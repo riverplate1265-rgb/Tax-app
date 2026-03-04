@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   ScrollView,
   Text,
@@ -22,7 +22,14 @@ import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
 import { saveCalculationResult } from "@/store/calculationStore";
-import { loadProfile, subscribeToProfileStore } from "@/store/profileStore";
+import {
+  loadProfile,
+  loadAllAnnualData,
+  getSavedYears,
+  subscribeToProfileStore,
+  type AnnualData,
+} from "@/store/profileStore";
+import { calcDependentSummary } from "@/lib/dependentCalculator";
 
 // モード定義
 type CalcMode = "simple" | "detailed";
@@ -65,6 +72,12 @@ export default function HomeScreen() {
   const [lifeInsurancePremium, setLifeInsurancePremium] = useState("");
   const [medicalExpenses, setMedicalExpenses] = useState("");
 
+  // 年次データ連携
+  const [savedYears, setSavedYears] = useState<number[]>([]);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [showYearModal, setShowYearModal] = useState(false);
+  const [dependentInfo, setDependentInfo] = useState<string>("");
+
   // 設定タブのデータを読み込んで詳細モードに反映
   useEffect(() => {
     if (settings) {
@@ -84,21 +97,58 @@ export default function HomeScreen() {
   }, [settings]);
 
   // profileStore からプロフィールを読み込んで基本情報に反映する関数
-  const applyProfileToForm = async () => {
+  const applyProfileToForm = useCallback(async () => {
     const profile = await loadProfile();
     if (!profile) return;
+
     if (profile.birthYear) setBirthYear(profile.birthYear);
     if (profile.birthMonth) setBirthMonth(profile.birthMonth);
     if (profile.birthDay) setBirthDay(profile.birthDay);
-    if (profile.prefecture) setPrefecture(profile.prefecture);
+    if (profile.workPrefecture) setPrefecture(profile.workPrefecture);
     if (profile.hasSpouse !== undefined) setHasSpouseDeduction(profile.hasSpouse);
-    if (profile.annualIncome) setAnnualIncome(profile.annualIncome);
-    if (profile.idecoMonthly) setIdecoMonthly(profile.idecoMonthly);
-    if (profile.furusatoAmount) setFurusatoAmount(profile.furusatoAmount);
-    if (profile.housingLoanBalance) setHousingLoanBalance(profile.housingLoanBalance);
-    // 子供の人数（19歳未満として扱う）
-    if (profile.childrenCount !== undefined) {
-      setChildrenUnder19(profile.childrenCount);
+
+    // 子供の生年月日から扶養区分を自動判定
+    if (profile.children && profile.children.length > 0) {
+      const summary = calcDependentSummary(profile.children, selectedYear);
+      setChildrenUnder19(summary.dependentsCount);
+      setChildrenUnder23(summary.specificDependentsCount);
+
+      // 扶養情報の説明テキストを生成
+      if (summary.details.length > 0) {
+        const infoText = summary.details
+          .map((d, i) => `第${i + 1}子：${d.label}`)
+          .join("、");
+        setDependentInfo(infoText);
+      }
+    } else {
+      setChildrenUnder19(0);
+      setChildrenUnder23(0);
+      setDependentInfo("");
+    }
+
+    // 保存済み年次データを読み込む
+    const years = await getSavedYears();
+    setSavedYears(years);
+
+    // 選択中の年次データを反映
+    const allData = await loadAllAnnualData();
+    const yearData = allData[selectedYear];
+    if (yearData) {
+      applyAnnualDataToForm(yearData);
+    }
+  }, [selectedYear]);
+
+  // 年次データをフォームに反映する
+  const applyAnnualDataToForm = (data: AnnualData) => {
+    if (data.annualIncome) setAnnualIncome(data.annualIncome);
+    if (data.workPrefecture) setPrefecture(data.workPrefecture);
+    if (data.idecoMonthly) setIdecoMonthly(data.idecoMonthly);
+    if (data.furusatoAmount) setFurusatoAmount(data.furusatoAmount);
+    if (data.housingLoanBalance) setHousingLoanBalance(data.housingLoanBalance);
+    if (data.lifeInsurance) setLifeInsurancePremium(data.lifeInsurance);
+    // 医療費は年次データから自動計算して反映
+    if (data.medicalExpenses) {
+      setMedicalExpenses(data.medicalExpenses);
     }
   };
 
@@ -110,7 +160,34 @@ export default function HomeScreen() {
       applyProfileToForm();
     });
     return unsubscribe;
-  }, []);
+  }, [applyProfileToForm]);
+
+  // 年次データ選択時に自動反映
+  const handleYearSelect = async (year: number) => {
+    setSelectedYear(year);
+    setShowYearModal(false);
+    const allData = await loadAllAnnualData();
+    const yearData = allData[year];
+    if (yearData) {
+      applyAnnualDataToForm(yearData);
+      // 子供の扶養区分も再計算
+      const profile = await loadProfile();
+      if (profile?.children && profile.children.length > 0) {
+        const summary = calcDependentSummary(profile.children, year);
+        setChildrenUnder19(summary.dependentsCount);
+        setChildrenUnder23(summary.specificDependentsCount);
+        if (summary.details.length > 0) {
+          const infoText = summary.details
+            .map((d, i) => `第${i + 1}子：${d.label}`)
+            .join("、");
+          setDependentInfo(infoText);
+        }
+      }
+    }
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
 
   const handleModeToggle = (isDetailed: boolean) => {
     if (Platform.OS !== "web") {
@@ -461,6 +538,17 @@ export default function HomeScreen() {
               </View>
             </View>
 
+            {/* 扶養自動判定の結果表示 */}
+            {dependentInfo !== "" && (
+              <View style={styles.dependentInfoBox}>
+                <Text style={styles.dependentInfoIcon}>👶</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.dependentInfoTitle}>設定の子供情報から自動判定</Text>
+                  <Text style={styles.dependentInfoText}>{dependentInfo}</Text>
+                </View>
+              </View>
+            )}
+
             <View style={styles.divider} />
 
             {/* 勤務地 */}
@@ -480,10 +568,35 @@ export default function HomeScreen() {
           {/* 詳細モード：節税控除フォーム */}
           {mode === "detailed" && (
             <View style={styles.card}>
-              <Text style={styles.cardSectionTitle}>節税控除の入力</Text>
-              <Text style={styles.cardSectionSubtitle}>
-                入力した控除を加味して手取りを精密計算します
-              </Text>
+              <View style={styles.detailHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardSectionTitle}>節税控除の入力</Text>
+                  <Text style={styles.cardSectionSubtitle}>
+                    入力した控除を加味して手取りを精密計算します
+                  </Text>
+                </View>
+                {/* 年次データ選択プルダウン */}
+                {savedYears.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.yearSelector}
+                    onPress={() => setShowYearModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.yearSelectorText}>{selectedYear}年</Text>
+                    <Text style={styles.yearSelectorChevron}>▼</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 年次データ反映バナー */}
+              {savedYears.includes(selectedYear) && (
+                <View style={styles.annualDataBanner}>
+                  <Text style={styles.annualDataBannerIcon}>📋</Text>
+                  <Text style={styles.annualDataBannerText}>
+                    {selectedYear}年の保存データを反映しています
+                  </Text>
+                </View>
+              )}
 
               {/* iDeCo */}
               <View style={styles.fieldGroup}>
@@ -568,7 +681,12 @@ export default function HomeScreen() {
               {/* 医療費控除 */}
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>医療費 年間支払額</Text>
-                <Text style={styles.fieldHint}>10万円超の部分が所得控除（上限200万円）</Text>
+                <Text style={styles.fieldHint}>
+                  10万円超の部分が所得控除（上限200万円）
+                  {medicalExpenses && parseInt(medicalExpenses) > 100000
+                    ? `　→ 控除額：${Math.min(parseInt(medicalExpenses) - 100000, 2000000).toLocaleString()}円`
+                    : ""}
+                </Text>
                 <View style={[styles.incomeRow, { marginTop: 8 }]}>
                   <TextInput
                     style={styles.detailInput}
@@ -645,6 +763,53 @@ export default function HomeScreen() {
                   {item}
                 </Text>
                 {item === prefecture && (
+                  <Text style={styles.prefCheckmark}>✓</Text>
+                )}
+              </Pressable>
+            )}
+            ItemSeparatorComponent={() => <View style={styles.prefDivider} />}
+          />
+        </View>
+      </Modal>
+
+      {/* 年次データ選択モーダル */}
+      <Modal
+        visible={showYearModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowYearModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>年次データを選択</Text>
+            <TouchableOpacity
+              onPress={() => setShowYearModal(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalClose}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={savedYears}
+            keyExtractor={(item) => String(item)}
+            renderItem={({ item }) => (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.prefItem,
+                  item === selectedYear && styles.prefItemSelected,
+                  pressed && { opacity: 0.6 },
+                ]}
+                onPress={() => handleYearSelect(item)}
+              >
+                <Text
+                  style={[
+                    styles.prefItemText,
+                    item === selectedYear && styles.prefItemTextSelected,
+                  ]}
+                >
+                  {item}年のデータ
+                </Text>
+                {item === selectedYear && (
                   <Text style={styles.prefCheckmark}>✓</Text>
                 )}
               </Pressable>
@@ -749,118 +914,195 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     detailBannerText: {
       fontSize: 12,
       color: colors.muted,
-      lineHeight: 18,
+      lineHeight: 17,
     },
     // カード
     card: {
       backgroundColor: colors.surface,
       borderRadius: 16,
-      paddingHorizontal: 16,
-      marginBottom: 20,
       borderWidth: 1,
       borderColor: colors.border,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 2,
+      padding: 20,
+      marginBottom: 16,
     },
     cardSectionTitle: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: "700",
-      color: colors.primary,
-      paddingTop: 14,
-      paddingBottom: 4,
-      letterSpacing: 0.3,
+      color: colors.foreground,
+      marginBottom: 4,
     },
     cardSectionSubtitle: {
       fontSize: 12,
       color: colors.muted,
-      paddingBottom: 8,
+      marginBottom: 16,
     },
+    // 詳細モードヘッダー行
+    detailHeaderRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      marginBottom: 4,
+      gap: 8,
+    },
+    // 年次データ選択
+    yearSelector: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.background,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      gap: 4,
+      marginTop: 2,
+    },
+    yearSelectorText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    yearSelectorChevron: {
+      fontSize: 10,
+      color: colors.primary,
+    },
+    // 年次データ反映バナー
+    annualDataBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#F0FFF4",
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "#68D391",
+      padding: 10,
+      marginBottom: 16,
+      gap: 8,
+    },
+    annualDataBannerIcon: {
+      fontSize: 16,
+    },
+    annualDataBannerText: {
+      fontSize: 12,
+      color: "#276749",
+      fontWeight: "500",
+    },
+    // 扶養自動判定ボックス
+    dependentInfoBox: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      backgroundColor: "#FFFBEB",
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "#F6AD55",
+      padding: 10,
+      marginTop: 8,
+      gap: 8,
+    },
+    dependentInfoIcon: {
+      fontSize: 16,
+    },
+    dependentInfoTitle: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: "#744210",
+      marginBottom: 2,
+    },
+    dependentInfoText: {
+      fontSize: 11,
+      color: "#744210",
+      lineHeight: 16,
+    },
+    // フィールド
     fieldGroup: {
-      paddingVertical: 14,
+      marginBottom: 4,
     },
     fieldLabel: {
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: "600",
       color: colors.foreground,
-      marginBottom: 4,
+      marginBottom: 6,
     },
     fieldHint: {
       fontSize: 12,
       color: colors.muted,
-      marginTop: 2,
+      marginBottom: 2,
     },
     divider: {
       height: 1,
       backgroundColor: colors.border,
+      marginVertical: 14,
     },
+    // 日付入力
     dateRow: {
       flexDirection: "row",
       gap: 8,
-      marginTop: 8,
     },
     dateInputWrap: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: colors.background,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      flex: 1,
+      gap: 4,
     },
     dateInput: {
-      flex: 1,
-      fontSize: 16,
-      color: colors.foreground,
-      padding: 0,
-    },
-    dateUnit: {
-      fontSize: 14,
-      color: colors.muted,
-      marginLeft: 2,
-    },
-    incomeRow: {
-      flexDirection: "row",
-      alignItems: "center",
+      width: 70,
+      height: 44,
       backgroundColor: colors.background,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
       paddingHorizontal: 12,
-      paddingVertical: 10,
+      fontSize: 16,
+      color: colors.foreground,
+      textAlign: "center",
+    },
+    dateUnit: {
+      fontSize: 14,
+      color: colors.muted,
+    },
+    // 年収入力
+    incomeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
     },
     incomeInput: {
       flex: 1,
-      fontSize: 22,
+      height: 48,
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 16,
+      fontSize: 20,
       fontWeight: "600",
       color: colors.foreground,
-      padding: 0,
-    },
-    detailInput: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: "500",
-      color: colors.foreground,
-      padding: 0,
     },
     incomeUnit: {
-      fontSize: 16,
+      fontSize: 14,
       color: colors.muted,
-      marginLeft: 4,
+      minWidth: 40,
     },
+    // 詳細入力
+    detailInput: {
+      flex: 1,
+      height: 44,
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      fontSize: 16,
+      color: colors.foreground,
+    },
+    // スイッチ行
     switchRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 14,
+      justifyContent: "space-between",
     },
+    // ステッパー
     stepperRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 14,
+      justifyContent: "space-between",
     },
     stepper: {
       flexDirection: "row",
@@ -868,53 +1110,61 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       gap: 12,
     },
     stepperBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: colors.primary,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
       alignItems: "center",
       justifyContent: "center",
     },
     stepperBtnText: {
       fontSize: 18,
-      color: "#FFFFFF",
-      fontWeight: "600",
+      color: colors.foreground,
       lineHeight: 22,
     },
     stepperValue: {
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: "700",
       color: colors.foreground,
       minWidth: 24,
       textAlign: "center",
     },
+    // 都道府県セレクター
     prefSelector: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
+      height: 44,
       backgroundColor: colors.background,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      marginTop: 8,
+      paddingHorizontal: 14,
     },
     prefSelectorText: {
-      flex: 1,
       fontSize: 16,
       color: colors.foreground,
-      fontWeight: "500",
     },
     prefChevron: {
       fontSize: 20,
       color: colors.muted,
     },
+    // エラーテキスト
+    errorText: {
+      fontSize: 12,
+      color: "#EF4444",
+      marginTop: 4,
+    },
+    // 計算ボタン
     calcButton: {
       backgroundColor: colors.primary,
       borderRadius: 14,
-      paddingVertical: 16,
+      height: 56,
       alignItems: "center",
-      marginBottom: 16,
+      justifyContent: "center",
+      marginBottom: 12,
       shadowColor: colors.primary,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
@@ -932,11 +1182,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: colors.muted,
       textAlign: "center",
       lineHeight: 16,
-    },
-    errorText: {
-      fontSize: 12,
-      color: colors.error,
-      marginTop: 4,
+      marginBottom: 8,
     },
     // モーダル
     modalContainer: {
@@ -947,31 +1193,31 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: 16,
+      padding: 20,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     modalTitle: {
       fontSize: 17,
-      fontWeight: "600",
+      fontWeight: "700",
       color: colors.foreground,
     },
     modalClose: {
-      fontSize: 16,
+      fontSize: 15,
       color: colors.primary,
+      fontWeight: "600",
     },
     prefItem: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 16,
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
       paddingVertical: 14,
-      backgroundColor: colors.surface,
     },
     prefItemSelected: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
     },
     prefItemText: {
-      flex: 1,
       fontSize: 16,
       color: colors.foreground,
     },
@@ -982,12 +1228,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     prefCheckmark: {
       fontSize: 16,
       color: colors.primary,
-      fontWeight: "600",
+      fontWeight: "700",
     },
     prefDivider: {
       height: 1,
       backgroundColor: colors.border,
-      marginLeft: 16,
+      marginHorizontal: 20,
     },
   });
 }

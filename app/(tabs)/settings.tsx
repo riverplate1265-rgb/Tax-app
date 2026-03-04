@@ -19,20 +19,13 @@ import { PREFECTURES } from "@/lib/constants";
 import { useAuthLink } from "@/hooks/use-auth-link";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { upsertProfile, getProfile } from "@/lib/supabaseDb";
-import { saveProfile, type ChildInfo } from "@/store/profileStore";
-
-type WorkClassification =
-  | "会社員（企業年金なし）"
-  | "会社員（企業年金あり）"
-  | "公務員"
-  | "自営業・フリーランス";
-
-const WORK_CLASSIFICATIONS: WorkClassification[] = [
-  "会社員（企業年金なし）",
-  "会社員（企業年金あり）",
-  "公務員",
-  "自営業・フリーランス",
-];
+import {
+  saveProfile,
+  saveAnnualData,
+  loadAnnualData,
+  getSavedYears,
+  type ChildInfo,
+} from "@/store/profileStore";
 
 /** 日付入力コンポーネント */
 function DateInput({
@@ -118,10 +111,16 @@ export default function SettingsScreen() {
     signOut,
   } = useAuthLink();
 
+  // 年度選択（年次データ用）
   const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [showYearModal, setShowYearModal] = useState(false);
+  // 選択可能な年度リスト（現在年 ± 3年）
+  const yearOptions = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
+
   const { settings, save, saving, load } = useAnnualSettings({
     userId: supabaseUser?.id ?? null,
-    year: currentYear,
+    year: selectedYear,
   });
 
   // プロフィール状態（ローカルUI用）
@@ -137,10 +136,8 @@ export default function SettingsScreen() {
   const [birthYear, setBirthYear] = useState("");
   const [birthMonth, setBirthMonth] = useState("");
   const [birthDay, setBirthDay] = useState("");
-  const [workClass, setWorkClass] = useState<WorkClassification>("会社員（企業年金なし）");
-  const [prefecture, setPrefecture] = useState("東京都");
-  const [showWorkModal, setShowWorkModal] = useState(false);
-  const [showPrefModal, setShowPrefModal] = useState(false);
+  const [workPrefecture, setWorkPrefecture] = useState("東京都");
+  const [showWorkPrefModal, setShowWorkPrefModal] = useState(false);
 
   // 配偶者情報
   const [hasSpouse, setHasSpouse] = useState(false);
@@ -154,11 +151,12 @@ export default function SettingsScreen() {
 
   // 年次設定
   const [annualIncome, setAnnualIncome] = useState("");
-  const [monthlyIncome, setMonthlyIncome] = useState("");
-  const [bonusAmount, setBonusAmount] = useState("");
+  const [spouseIncome, setSpouseIncome] = useState("");
   const [idecoMonthly, setIdecoMonthly] = useState("");
   const [furusatoAmount, setFurusatoAmount] = useState("");
   const [housingLoanBalance, setHousingLoanBalance] = useState("");
+  const [lifeInsurance, setLifeInsurance] = useState("");
+  const [medicalExpenses, setMedicalExpenses] = useState("");
 
   const styles = createStyles(colors);
 
@@ -183,16 +181,42 @@ export default function SettingsScreen() {
     signInAnonymously();
   }, []);
 
-  // Supabase から設定を読み込んでフォームに反映
+  // 年度が変わったとき、profileStoreから読み込む
+  useEffect(() => {
+    loadAnnualData(selectedYear).then((data) => {
+      if (data) {
+        setAnnualIncome(data.annualIncome ?? "");
+        setSpouseIncome(data.spouseIncome ?? "");
+        setIdecoMonthly(data.idecoMonthly ?? "");
+        setFurusatoAmount(data.furusatoAmount ?? "");
+        setHousingLoanBalance(data.housingLoanBalance ?? "");
+        setLifeInsurance(data.lifeInsurance ?? "");
+        setMedicalExpenses(data.medicalExpenses ?? "");
+      } else if (settings) {
+        // profileStoreにない場合はSupabaseから
+        if (settings.annual_income) setAnnualIncome(String(settings.annual_income));
+        if (settings.ideco_contribution) setIdecoMonthly(String(settings.ideco_contribution));
+        if (settings.furusato_nouzei_donation) setFurusatoAmount(String(settings.furusato_nouzei_donation));
+        if (settings.housing_loan_deduction) setHousingLoanBalance(String(settings.housing_loan_deduction));
+        if (settings.life_insurance_deduction) setLifeInsurance(String(settings.life_insurance_deduction));
+        if (settings.spouse_income) setSpouseIncome(String(settings.spouse_income));
+        if (settings.medical_expenses) setMedicalExpenses(String(settings.medical_expenses));
+        if (settings.work_prefecture) setWorkPrefecture(settings.work_prefecture);
+      }
+    });
+  }, [selectedYear]);
+
+  // Supabase から設定を読み込んでフォームに反映（初回のみ）
   useEffect(() => {
     if (settings) {
       if (settings.annual_income) setAnnualIncome(String(settings.annual_income));
-      if (settings.monthly_income) setMonthlyIncome(String(settings.monthly_income));
-      if (settings.bonus_amount) setBonusAmount(String(settings.bonus_amount));
       if (settings.ideco_contribution) setIdecoMonthly(String(settings.ideco_contribution));
       if (settings.furusato_nouzei_donation) setFurusatoAmount(String(settings.furusato_nouzei_donation));
       if (settings.housing_loan_deduction) setHousingLoanBalance(String(settings.housing_loan_deduction));
-      if (settings.prefecture) setPrefecture(settings.prefecture);
+      if (settings.life_insurance_deduction) setLifeInsurance(String(settings.life_insurance_deduction));
+      if (settings.spouse_income) setSpouseIncome(String(settings.spouse_income));
+      if (settings.medical_expenses) setMedicalExpenses(String(settings.medical_expenses));
+      if (settings.work_prefecture) setWorkPrefecture(settings.work_prefecture);
     }
   }, [settings]);
 
@@ -209,7 +233,7 @@ export default function SettingsScreen() {
           setBirthDay(String(parseInt(parts[2], 10)));
         }
       }
-      if (profile.work_classification) setWorkClass(profile.work_classification as WorkClassification);
+      if (profile.work_prefecture) setWorkPrefecture(profile.work_prefecture);
       if (profile.has_spouse !== undefined) setHasSpouse(profile.has_spouse);
       if (profile.children_count !== undefined) setChildrenCount(profile.children_count);
       if (profile.is_premium !== undefined) setIsPremium(profile.is_premium);
@@ -261,7 +285,7 @@ export default function SettingsScreen() {
         birth_date: birthYear && birthMonth && birthDay
           ? `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`
           : null,
-        work_classification: workClass as any,
+        work_prefecture: workPrefecture,
         has_spouse: hasSpouse,
         children_count: childrenCount,
       });
@@ -271,18 +295,13 @@ export default function SettingsScreen() {
         birthYear,
         birthMonth,
         birthDay,
-        workClass,
-        prefecture,
+        workPrefecture,
         hasSpouse,
         spouseBirthYear,
         spouseBirthMonth,
         spouseBirthDay,
         childrenCount,
         children,
-        annualIncome,
-        idecoMonthly,
-        furusatoAmount,
-        housingLoanBalance,
         savedAt: new Date().toISOString(),
       });
 
@@ -300,14 +319,31 @@ export default function SettingsScreen() {
 
   // 年次データを保存する
   const handleSaveAnnualSettings = async () => {
+    // profileStore に保存（計算タブ詳細モードへの自動反映）
+    await saveAnnualData({
+      year: selectedYear,
+      annualIncome,
+      spouseIncome,
+      commutingAllowance: "",
+      idecoMonthly,
+      furusatoAmount,
+      housingLoanBalance,
+      lifeInsurance,
+      medicalExpenses,
+      workPrefecture,
+      savedAt: new Date().toISOString(),
+    });
+
+    // Supabase にも保存
     const success = await save({
       annual_income: annualIncome ? parseFloat(annualIncome) : null,
-      monthly_income: monthlyIncome ? parseFloat(monthlyIncome) : null,
-      bonus_amount: bonusAmount ? parseFloat(bonusAmount) : null,
       ideco_contribution: idecoMonthly ? parseInt(idecoMonthly, 10) : null,
       furusato_nouzei_donation: furusatoAmount ? parseInt(furusatoAmount, 10) : null,
       housing_loan_deduction: housingLoanBalance ? parseInt(housingLoanBalance, 10) : null,
-      prefecture,
+      life_insurance_deduction: lifeInsurance ? parseInt(lifeInsurance, 10) : null,
+      spouse_income: spouseIncome ? parseFloat(spouseIncome) : null,
+      medical_expenses: medicalExpenses ? parseInt(medicalExpenses, 10) : null,
+      work_prefecture: workPrefecture,
     });
     if (success) {
       setAnnualSaveSuccess(true);
@@ -356,13 +392,11 @@ export default function SettingsScreen() {
         ) : (
           <View style={styles.accountCard}>
             <View style={styles.accountAvatar}>
-              <Text style={styles.accountAvatarText}>
-                {isLoggedIn ? "👤" : "?"}
-              </Text>
+              <Text style={styles.accountAvatarText}>👤</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.accountName}>
-                {isLoggedIn ? "ゲストユーザー" : "未ログイン"}
+                {isAuthenticated ? "ログイン済み" : "ゲストユーザー"}
               </Text>
               <Text style={styles.accountStatus}>
                 {isPremium ? "✨ プレミアム会員" : "フリープラン"}
@@ -441,30 +475,15 @@ export default function SettingsScreen() {
 
           <View style={styles.divider} />
 
-          {/* 職場区分 */}
+          {/* 勤務都道府県 */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>職場区分</Text>
+            <Text style={styles.fieldLabel}>勤務都道府県</Text>
             <TouchableOpacity
               style={styles.selector}
-              onPress={() => isPremium && setShowWorkModal(true)}
+              onPress={() => isPremium && setShowWorkPrefModal(true)}
               activeOpacity={0.7}
             >
-              <Text style={styles.selectorText}>{workClass}</Text>
-              <Text style={styles.selectorChevron}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* 都道府県 */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>居住都道府県</Text>
-            <TouchableOpacity
-              style={styles.selector}
-              onPress={() => isPremium && setShowPrefModal(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.selectorText}>{prefecture}</Text>
+              <Text style={styles.selectorText}>{workPrefecture}</Text>
               <Text style={styles.selectorChevron}>›</Text>
             </TouchableOpacity>
           </View>
@@ -549,9 +568,7 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {/* プロフィールを保存するボタン（基本プロフィールの直下） */}
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* プロフィールを保存するボタン（基本プロフィールの直下・年次データの上） */}
         {isLoggedIn && isPremium && (
           <TouchableOpacity
             style={[styles.saveProfileBtn, isSavingProfile && { opacity: 0.7 }]}
@@ -573,13 +590,26 @@ export default function SettingsScreen() {
         {/* 年次データ設定 */}
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>年次データ（{currentYear}年）</Text>
+          <Text style={styles.sectionTitle}>年次データ</Text>
           {isPremium && (
             <View style={styles.premiumTag}>
               <Text style={styles.premiumTagText}>PRO</Text>
             </View>
           )}
         </View>
+
+        {/* 年度選択プルダウン */}
+        <TouchableOpacity
+          style={styles.yearSelector}
+          onPress={() => setShowYearModal(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.yearSelectorLabel}>対象年度</Text>
+          <View style={styles.yearSelectorRight}>
+            <Text style={styles.yearSelectorValue}>{selectedYear}年</Text>
+            <Text style={styles.selectorChevron}>›</Text>
+          </View>
+        </TouchableOpacity>
 
         <View style={[styles.card, !isPremium && styles.cardLocked]}>
           {!isPremium && (
@@ -598,7 +628,7 @@ export default function SettingsScreen() {
 
           {/* 年収 */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>年収</Text>
+            <Text style={styles.fieldLabel}>年収（見込み）</Text>
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
@@ -615,40 +645,22 @@ export default function SettingsScreen() {
 
           <View style={styles.divider} />
 
-          {/* 月収 */}
+          {/* 配偶者の見込み年収 */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>月収（基本給）</Text>
+            <Text style={styles.fieldLabel}>配偶者の見込み年収</Text>
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
-                placeholder="30"
+                placeholder="103"
                 placeholderTextColor={colors.muted}
                 keyboardType="decimal-pad"
-                value={monthlyIncome}
-                onChangeText={setMonthlyIncome}
+                value={spouseIncome}
+                onChangeText={setSpouseIncome}
                 editable={isPremium}
               />
               <Text style={styles.inputUnit}>万円</Text>
             </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* 賞与 */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>賞与合計（年間）</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                placeholder="120"
-                placeholderTextColor={colors.muted}
-                keyboardType="decimal-pad"
-                value={bonusAmount}
-                onChangeText={setBonusAmount}
-                editable={isPremium}
-              />
-              <Text style={styles.inputUnit}>万円</Text>
-            </View>
+            <Text style={styles.fieldNote}>103万円以下で配偶者控除、201万円以下で配偶者特別控除が適用されます</Text>
           </View>
 
           <View style={styles.divider} />
@@ -708,6 +720,45 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <View style={styles.divider} />
+
+          {/* 生命保険料 */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>生命保険料（年間）</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                placeholder="120000"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                value={lifeInsurance}
+                onChangeText={setLifeInsurance}
+                editable={isPremium}
+              />
+              <Text style={styles.inputUnit}>円</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* 医療費年間見込額 */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>医療費 年間見込額</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                placeholder="150000"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                value={medicalExpenses}
+                onChangeText={setMedicalExpenses}
+                editable={isPremium}
+              />
+              <Text style={styles.inputUnit}>円</Text>
+            </View>
+            <Text style={styles.fieldNote}>10万円超の部分が医療費控除として所得控除されます（上限200万円）</Text>
+          </View>
+
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.7 }]}
             onPress={handleSaveAnnualSettings}
@@ -718,7 +769,7 @@ export default function SettingsScreen() {
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <Text style={styles.saveBtnText}>
-                {annualSaveSuccess ? "✓ 保存しました" : "年次データを保存する"}
+                {annualSaveSuccess ? `✓ ${selectedYear}年のデータを保存しました` : `${selectedYear}年のデータを保存する`}
               </Text>
             )}
           </TouchableOpacity>
@@ -759,6 +810,49 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* 年度選択モーダル */}
+      <Modal
+        visible={showYearModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowYearModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>対象年度を選択</Text>
+            <TouchableOpacity onPress={() => setShowYearModal(false)}>
+              <Text style={styles.modalClose}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {yearOptions.map((year) => (
+              <TouchableOpacity
+                key={year}
+                style={[styles.workClassItem, year === selectedYear && styles.workClassItemSelected]}
+                onPress={() => {
+                  setSelectedYear(year);
+                  setShowYearModal(false);
+                  // フォームをリセット
+                  setAnnualIncome("");
+                  setSpouseIncome("");
+                  setIdecoMonthly("");
+                  setFurusatoAmount("");
+                  setHousingLoanBalance("");
+                  setLifeInsurance("");
+                  setMedicalExpenses("");
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.workClassText, year === selectedYear && styles.workClassTextSelected]}>
+                  {year}年{year === currentYear ? "（今年）" : ""}
+                </Text>
+                {year === selectedYear && <Text style={styles.workClassCheck}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* 認証モーダル */}
       <Modal
@@ -884,50 +978,17 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
-      {/* 職場区分選択モーダル */}
+      {/* 勤務都道府県選択モーダル */}
       <Modal
-        visible={showWorkModal}
+        visible={showWorkPrefModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowWorkModal(false)}
+        onRequestClose={() => setShowWorkPrefModal(false)}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>職場区分を選択</Text>
-            <TouchableOpacity onPress={() => setShowWorkModal(false)}>
-              <Text style={styles.modalClose}>閉じる</Text>
-            </TouchableOpacity>
-          </View>
-          {WORK_CLASSIFICATIONS.map((item) => (
-            <TouchableOpacity
-              key={item}
-              style={[styles.workClassItem, item === workClass && styles.workClassItemSelected]}
-              onPress={() => {
-                setWorkClass(item);
-                setShowWorkModal(false);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.workClassText, item === workClass && styles.workClassTextSelected]}>
-                {item}
-              </Text>
-              {item === workClass && <Text style={styles.workClassCheck}>✓</Text>}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Modal>
-
-      {/* 都道府県選択モーダル */}
-      <Modal
-        visible={showPrefModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowPrefModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>都道府県を選択</Text>
-            <TouchableOpacity onPress={() => setShowPrefModal(false)}>
+            <Text style={styles.modalTitle}>勤務都道府県を選択</Text>
+            <TouchableOpacity onPress={() => setShowWorkPrefModal(false)}>
               <Text style={styles.modalClose}>閉じる</Text>
             </TouchableOpacity>
           </View>
@@ -935,17 +996,17 @@ export default function SettingsScreen() {
             {PREFECTURES.map((item) => (
               <TouchableOpacity
                 key={item}
-                style={[styles.workClassItem, item === prefecture && styles.workClassItemSelected]}
+                style={[styles.workClassItem, item === workPrefecture && styles.workClassItemSelected]}
                 onPress={() => {
-                  setPrefecture(item);
-                  setShowPrefModal(false);
+                  setWorkPrefecture(item);
+                  setShowWorkPrefModal(false);
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.workClassText, item === prefecture && styles.workClassTextSelected]}>
+                <Text style={[styles.workClassText, item === workPrefecture && styles.workClassTextSelected]}>
                   {item}
                 </Text>
-                {item === prefecture && <Text style={styles.workClassCheck}>✓</Text>}
+                {item === workPrefecture && <Text style={styles.workClassCheck}>✓</Text>}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -1128,6 +1189,34 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       color: "#FFFFFF",
       letterSpacing: 0.5,
     },
+    // 年度セレクター
+    yearSelector: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    yearSelectorLabel: {
+      fontSize: 14,
+      color: colors.muted,
+      fontWeight: "500",
+    },
+    yearSelectorRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    yearSelectorValue: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.primary,
+    },
     // カード
     card: {
       backgroundColor: colors.surface,
@@ -1187,6 +1276,12 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontWeight: "600",
       color: colors.foreground,
       marginBottom: 8,
+    },
+    fieldNote: {
+      fontSize: 12,
+      color: colors.muted,
+      marginTop: 6,
+      lineHeight: 18,
     },
     divider: {
       height: 1,
@@ -1536,7 +1631,7 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       textAlign: "center",
       lineHeight: 18,
     },
-    // 職場区分・都道府県モーダル
+    // 都道府県・年度モーダル
     workClassItem: {
       flexDirection: "row",
       alignItems: "center",

@@ -17,7 +17,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { PREFECTURES } from "@/lib/constants";
-import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, calcHousingLoanDeduction, type TaxInput } from "@/lib/taxCalculator";
+import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, calcHousingLoanDeduction, calcIdecoDeduction, calcKyuyoShotokuKojo, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
@@ -452,7 +452,8 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <Text style={styles.cardSectionTitle}>基本情報</Text>
 
-            {/* 生年月日 */}
+            {/* 生年月日（簡易モードのみ表示） */}
+            {mode === "simple" && (
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>生年月日</Text>
               <View style={styles.dateRow}>
@@ -500,8 +501,9 @@ export default function HomeScreen() {
                 <Text style={styles.errorText}>{errors.birthDate}</Text>
               )}
             </View>
+            )}
 
-            <View style={styles.divider} />
+            {mode === "simple" && <View style={styles.divider} />}
 
             {/* 年収 */}
             <View style={styles.fieldGroup}>
@@ -522,6 +524,27 @@ export default function HomeScreen() {
                 <Text style={styles.errorText}>{errors.annualIncome}</Text>
               )}
             </View>
+
+            {/* 給与所得控除（詳細モードのみ表示） */}
+            {mode === "detailed" && annualIncome && parseFloat(annualIncome) > 0 && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>給与所得控除</Text>
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>💴</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>年収から自動計算（令和8年度改正後）</Text>
+                      <Text style={styles.autoCalcText}>
+                        年収 {parseFloat(annualIncome).toLocaleString()}万円
+                        {" → "}控除額 {calcKyuyoShotokuKojo(parseFloat(annualIncome) * 10000).toLocaleString()}円
+                      </Text>
+                      <Text style={styles.autoCalcSub}>計算式：年収に応じた段階控除（最低保障74万円、上限195万円）</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
 
             <View style={styles.divider} />
 
@@ -638,9 +661,10 @@ export default function HomeScreen() {
               </View>
             )}
 
-            <View style={styles.divider} />
+            {mode === "simple" && <View style={styles.divider} />}
 
-            {/* 勤務地 */}
+            {/* 勤務地（簡易モードのみ表示） */}
+            {mode === "simple" && (
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>勤務地（都道府県）</Text>
               <TouchableOpacity
@@ -652,6 +676,7 @@ export default function HomeScreen() {
                 <Text style={styles.prefChevron}>›</Text>
               </TouchableOpacity>
             </View>
+            )}
           </View>
 
           {/* 詳細モード：控除フォーム */}
@@ -687,40 +712,46 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {/* iDeCo */}
+              {/* iDeCo → 小規模企業共済等掛金控除（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>iDeCo 月額掛金</Text>
-                <View style={[styles.incomeRow, { marginTop: 4 }]}>
-                  <TextInput
-                    style={styles.detailInput}
-                    placeholder="23000"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="number-pad"
-                    value={idecoMonthly}
-                    onChangeText={setIdecoMonthly}
-                    returnKeyType="next"
-                  />
-                  <Text style={styles.incomeUnit}>円/月</Text>
-                </View>
+                <Text style={styles.fieldLabel}>小規模企業共済等掛金控除</Text>
+                {idecoMonthly ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>🏦</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブのiDeCo掛金から自動計算</Text>
+                      <Text style={styles.autoCalcText}>
+                        月額掛金 {parseInt(idecoMonthly).toLocaleString()}円/月
+                        {" → "}控除額 {calcIdecoDeduction(parseInt(idecoMonthly)).toLocaleString()}円/年
+                      </Text>
+                      <Text style={styles.autoCalcSub}>計算式：月額掛金 × 12か月（上限：27.6万円/年）、全額所得控除</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブの「年次データ」でiDeCo掛金を入力すると自動計算されます</Text>
+                )}
               </View>
 
               <View style={styles.divider} />
 
-              {/* ふるさと納税 */}
+              {/* ふるさと納税 → 寄付金控除（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>ふるさと納税 年間寄付額</Text>
-                <View style={[styles.incomeRow, { marginTop: 4 }]}>
-                  <TextInput
-                    style={styles.detailInput}
-                    placeholder="50000"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="number-pad"
-                    value={furusatoAmount}
-                    onChangeText={setFurusatoAmount}
-                    returnKeyType="next"
-                  />
-                  <Text style={styles.incomeUnit}>円/年</Text>
-                </View>
+                <Text style={styles.fieldLabel}>寄付金控除（ふるさと納税）</Text>
+                {furusatoAmount ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>🌾</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブのふるさと納税寄付額から自動計算</Text>
+                      <Text style={styles.autoCalcText}>
+                        年間寄付額 {parseInt(furusatoAmount).toLocaleString()}円
+                        {" → "}実質税額控除 {Math.max(0, parseInt(furusatoAmount) - 2000).toLocaleString()}円
+                      </Text>
+                      <Text style={styles.autoCalcSub}>計算式：寄付金額 - 2,000円（所得税控除 + 住民税控除の合計）</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブの「年次データ」でふるさと納税寄付額を入力すると自動計算されます</Text>
+                )}
               </View>
 
               <View style={styles.divider} />

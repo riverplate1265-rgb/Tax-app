@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Tax App QR Code</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+    .card { background: white; border-radius: 16px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+    h2 { margin: 0 0 8px; color: #1A6FD4; }
+    p { color: #666; margin: 0 0 24px; font-size: 14px; }
+    canvas { border-radius: 8px; }
+    .url { font-size: 11px; color: #999; margin-top: 16px; word-break: break-all; }
+    .step { background: #f0f7ff; border-radius: 8px; padding: 12px 16px; margin-top: 16px; text-align: left; font-size: 13px; color: #333; }
+    .step b { color: #1A6FD4; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Tax App</h2>
+    <p>Expo Goアプリでスキャンしてください</p>
+    <canvas id="qr"></canvas>
+    <div class="step">
+      <b>手順：</b><br>
+      1. スマートフォンに「Expo Go」をインストール<br>
+      2. アプリを開いてQRコードをスキャン
+    </div>
+    <div class="url" id="urlText"></div>
+  </div>
+  <script>
+    const url = "exp://og9jy0w-anonymous-8081.exp.direct";
+    document.getElementById("urlText").textContent = url;
+    QRCode.toCanvas(document.getElementById("qr"), url, { width: 280, margin: 2 }, function(err) {
+      if (err) console.error(err);
+    });
+  </script>
+</body>
+</html>

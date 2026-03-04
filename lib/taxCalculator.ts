@@ -107,7 +107,7 @@ function getHyojunShoyo(bonusAmount: number, type: "kenpo" | "nenkin"): number {
  * 令和8年度（2026年分）改正後：最低保障額74万円
  * 出典: 令和8年度税制改正大綱（令和7年12月26日閣議決定）
  */
-function calcKyuyoShotokuKojo(annualIncome: number): number {
+export function calcKyuyoShotokuKojo(annualIncome: number): number {
   // 令和8・9年分：最低保障額74万円（本則69万円 + 特例5万円）
   if (annualIncome <= 1_625_000) return 740_000;
   if (annualIncome <= 1_800_000) return Math.floor(annualIncome * 0.4) - 100_000;
@@ -183,7 +183,7 @@ function getIncomeTaxRate(taxableIncome: number): { rate: number; deduction: num
  * 拠出額は全額小規模企業共済等掛金控除として所得控除
  * 上限: 会社員（企業型DCなし）= 月2.3万円 = 年27.6万円
  */
-function calcIdecoDeduction(idecoMonthly: number): number {
+export function calcIdecoDeduction(idecoMonthly: number): number {
   const annual = idecoMonthly * 12;
   // 上限: 月2.3万円（会社員・企業型DCなし）
   return Math.min(annual, 276_000);

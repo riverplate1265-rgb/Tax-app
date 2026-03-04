@@ -24,6 +24,10 @@ import {
   saveAnnualData,
   loadAnnualData,
   getSavedYears,
+  savePremium,
+  loadPremium,
+  getPremiumSync,
+  subscribeToProfileStore,
   type ChildInfo,
   type DisabilityType,
 } from "@/store/profileStore";
@@ -112,12 +116,19 @@ export default function SettingsScreen() {
     signOut,
   } = useAuthLink();
 
+  // 設定ビュー切り替え（基本プロフィール / 年次設定）
+  type SettingsView = "profile" | "annual";
+  const [settingsView, setSettingsView] = useState<SettingsView>("profile");
+
   // 年度選択（年次データ用）
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [showYearModal, setShowYearModal] = useState(false);
-  // 選択可能な年度リスト（現在年 ± 3年）
-  const yearOptions = Array.from({ length: 7 }, (_, i) => currentYear - 3 + i);
+  // 選択可能な年度リスト（2025年以降・現在年まで）
+  const yearOptions = Array.from(
+    { length: Math.max(1, currentYear - 2025 + 1) },
+    (_, i) => 2025 + i
+  );
 
   const { settings, save, saving, load } = useAnnualSettings({
     userId: supabaseUser?.id ?? null,
@@ -126,7 +137,7 @@ export default function SettingsScreen() {
 
   // プロフィール状態（ローカルUI用）
   const isLoggedIn = isAuthenticated || isAnonymous;
-  const [isPremium, setIsPremium] = useState(false);
+  const [isPremium, setIsPremium] = useState(() => getPremiumSync());
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -180,9 +191,17 @@ export default function SettingsScreen() {
     });
   }, [childrenCount]);
 
-  // 起動時に匿名認証
+  // 起動時に匿名認証・プレミアムフラグ読み込み
   useEffect(() => {
     signInAnonymously();
+    loadPremium().then((v) => setIsPremium(v));
+  }, []);
+
+  // profileStoreの変更を監視（他タブからの変更を反映）
+  useEffect(() => {
+    return subscribeToProfileStore(() => {
+      setIsPremium(getPremiumSync());
+    });
   }, []);
 
   // 年度が変わったとき、profileStoreから読み込む
@@ -262,10 +281,11 @@ export default function SettingsScreen() {
     setShowAuthModal(false);
   };
 
-  const handlePremiumPurchase = () => {
+  const handlePremiumPurchase = async () => {
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+    await savePremium(true);
     setIsPremium(true);
     setShowPremiumModal(false);
   };
@@ -371,6 +391,28 @@ export default function SettingsScreen() {
           <Text style={styles.headerSubtitle}>プロフィールと年次データの管理</Text>
         </View>
 
+        {/* 設定ビュートグル */}
+        <View style={styles.settingsToggle}>
+          <TouchableOpacity
+            style={[styles.settingsToggleBtn, settingsView === "profile" && styles.settingsToggleBtnActive]}
+            onPress={() => setSettingsView("profile")}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.settingsToggleBtnText, settingsView === "profile" && styles.settingsToggleBtnTextActive]}>
+              👤 基本プロフィール
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.settingsToggleBtn, settingsView === "annual" && styles.settingsToggleBtnActive]}
+            onPress={() => setSettingsView("annual")}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.settingsToggleBtnText, settingsView === "annual" && styles.settingsToggleBtnTextActive]}>
+              📅 年次設定
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* アカウント状態カード */}
         {!isLoggedIn ? (
           <View style={styles.authCard}>
@@ -429,7 +471,7 @@ export default function SettingsScreen() {
             <View style={styles.premiumBannerLeft}>
               <Text style={styles.premiumBannerTitle}>✨ プレミアムプランにアップグレード</Text>
               <Text style={styles.premiumBannerSubtitle}>
-                詳細計算・分析タブ・節税提案・PDFレポートが使い放題
+                詳細計算・分析タブ・節税提案・PDFレポート・広告なし
               </Text>
             </View>
             <View style={styles.premiumBannerPrice}>
@@ -439,15 +481,15 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {/* 基本プロフィール（有料版のみ） */}
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>基本プロフィール</Text>
-          <View style={styles.premiumTag}>
-            <Text style={styles.premiumTagText}>PRO</Text>
-          </View>
-        </View>
+        {/* 基本プロフィール（プロフィールビューのみ） */}
+        {settingsView === "profile" && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>基本プロフィール</Text>
+              <View style={styles.premiumTag}>
+                <Text style={styles.premiumTagText}>PRO</Text>
+              </View>
+            </View>
 
         <View style={[styles.card, !isPremium && styles.cardLocked]}>
           {/* 有料版ロックオーバーレイ */}
@@ -602,7 +644,7 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* プロフィールを保存するボタン（基本プロフィールの直下・年次データの上） */}
+        {/* プロフィールを保存するボタン（基本プロフィールの直下） */}
         {isLoggedIn && isPremium && (
           <TouchableOpacity
             style={[styles.saveProfileBtn, isSavingProfile && { opacity: 0.7 }]}
@@ -619,10 +661,12 @@ export default function SettingsScreen() {
             )}
           </TouchableOpacity>
         )}
+          </>
+        )}
 
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {/* 年次データ設定 */}
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 年次データ設定（年次設定ビューのみ） */}
+        {settingsView === "annual" && (
+          <>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>年次データ</Text>
           {isPremium && (
@@ -812,6 +856,8 @@ export default function SettingsScreen() {
             )}
           </TouchableOpacity>
         </View>
+          </>
+        )}
 
         {/* アプリ情報 */}
         <View style={styles.sectionHeader}>
@@ -821,14 +867,13 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           {[
             { label: "バージョン", value: "2.0.0" },
-            { label: "適用法令", value: "令和8年度（2026年）" },
             { label: "最終更新", value: "2026年3月" },
           ].map((item, idx) => (
             <View
               key={item.label}
               style={[
                 styles.infoRow,
-                idx === 2 && { borderBottomWidth: 0 },
+                idx === 1 && { borderBottomWidth: 0 },
               ]}
             >
               <Text style={styles.infoLabel}>{item.label}</Text>
@@ -989,6 +1034,7 @@ export default function SettingsScreen() {
               { icon: "💡", title: "節税提案", desc: "あなたの状況に最適化されたiDeCo・ふるさと納税の推奨額を計算" },
               { icon: "📄", title: "PDFレポート出力", desc: "分析結果をPDFでダウンロード・共有" },
               { icon: "☁️", title: "クラウド同期", desc: "複数デバイスでデータを同期" },
+            { icon: "🚫", title: "広告なし", desc: "アプリ内の広告を非表示にしてスッキり使える" },
             ].map((feature) => (
               <View key={feature.title} style={styles.premiumFeatureItem}>
                 <Text style={styles.premiumFeatureIcon}>{feature.icon}</Text>
@@ -1723,6 +1769,40 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     segmentBtnTextActive: {
       color: colors.primary,
       fontWeight: "700" as const,
+    },
+    // 設定タブのトグルボタン
+    settingsToggle: {
+      flexDirection: "row" as const,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 4,
+      marginHorizontal: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    settingsToggleBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      borderRadius: 9,
+      alignItems: "center" as const,
+    },
+    settingsToggleBtnActive: {
+      backgroundColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    settingsToggleBtnText: {
+      fontSize: 13,
+      fontWeight: "600" as const,
+      color: colors.muted,
+    },
+    settingsToggleBtnTextActive: {
+      color: "#FFFFFF",
     },
   });
 }

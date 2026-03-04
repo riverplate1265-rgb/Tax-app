@@ -27,6 +27,8 @@ import {
   loadAllAnnualData,
   getSavedYears,
   subscribeToProfileStore,
+  loadPremium,
+  getPremiumSync,
   type AnnualData,
   type DisabilityType,
 } from "@/store/profileStore";
@@ -75,6 +77,9 @@ export default function HomeScreen() {
 
   // 障害者情報（設定タブから取得）
   const [disabilityType, setDisabilityType] = useState<DisabilityType>("none");
+
+  // プレミアムフラグ
+  const [isPremium, setIsPremium] = useState(() => getPremiumSync());
 
   // 年次データ連携
   const [savedYears, setSavedYears] = useState<number[]>([]);
@@ -189,12 +194,14 @@ export default function HomeScreen() {
     }
   };
 
-  // 起動時にprofileStoreから読み込む
+   // 起動時にプロフィールStoreから読み込む
   useEffect(() => {
     applyProfileToForm();
+    loadPremium().then((v) => setIsPremium(v));
     // 設定タブで保存されたとき（subscribeToProfileStore）に自動反映
     const unsubscribe = subscribeToProfileStore(() => {
       applyProfileToForm();
+      setIsPremium(getPremiumSync());
     });
     return unsubscribe;
   }, [applyProfileToForm]);

@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ScrollView,
   Text,
   View,
   TouchableOpacity,
+  Switch,
   StyleSheet,
   Platform,
   Dimensions,
@@ -21,6 +22,13 @@ import {
   calcFurusatoOptimal,
   calcIdecoMax,
 } from "@/lib/taxCalculatorDetailed";
+import {
+  loadAllAnnualData,
+  loadPremium,
+  getPremiumSync,
+  subscribeToProfileStore,
+  type AnnualDataMap,
+} from "@/store/profileStore";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CHART_WIDTH = SCREEN_WIDTH - 64;
@@ -96,16 +104,25 @@ function getPeerAverage(age: number): number {
 // 税務カレンダーデータ
 const TAX_CALENDAR = [
   { month: 1, label: "1月", events: ["給与支払報告書提出"] },
-  { month: 2, label: "2月", events: ["確定申告受付開始（2/17〜）"] },
+  { month: 2, label: "2月", events: ["確定申告受付開始（2/17～）"] },
   { month: 3, label: "3月", events: ["確定申告期限（3/17）", "協会けんぽ保険料率改定"] },
-  { month: 4, label: "4月", events: ["子ども・子育て支援金 徴収開始"] },
+  { month: 4, label: "4月", events: ["子ども・子育て支援金 徴収開始", "雇用保険料率改定"] },
   { month: 5, label: "5月", events: ["住民税決定通知書"] },
-  { month: 6, label: "6月", events: ["住民税 第1期納付", "住民税特別徴収開始"] },
+  { month: 6, label: "6月", events: ["住民税 第1期納付", "住民税の新年度徴収開始"] },
   { month: 8, label: "8月", events: ["住民税 第2期納付"] },
+  { month: 9, label: "9月", events: ["社会保険料の定時決定"] },
   { month: 10, label: "10月", events: ["住民税 第3期納付"] },
   { month: 11, label: "11月", events: ["年末調整書類提出"] },
-  { month: 12, label: "12月", events: ["年末調整", "住民税 第4期納付"] },
+  { month: 12, label: "12月", events: ["年末調整", "ふるさと納税の期限（12/31）"] },
 ];
+
+// リマインダー設定の型
+type ReminderTiming = "1week" | "3days";
+interface ReminderSetting {
+  label: string;
+  enabled: boolean;
+  timing: ReminderTiming;
+}
 
 type AnalysisTab = "comparison" | "future" | "taxUsage" | "calendar" | "taxSaving";
 
@@ -114,6 +131,37 @@ export default function AnalysisScreen() {
   const [activeTab, setActiveTab] = useState<AnalysisTab>("comparison");
   // 実際の計算結果を取得
   const { result, input, isLoaded, hasData } = useCalculationResult();
+
+  // プレミアムフラグ
+  const [isPremium, setIsPremium] = useState(() => getPremiumSync());
+  useEffect(() => {
+    loadPremium().then((v) => setIsPremium(v));
+    return subscribeToProfileStore(() => setIsPremium(getPremiumSync()));
+  }, []);
+
+  // 年次データ（手取り推移チャート用）
+  const [annualDataMap, setAnnualDataMap] = useState<AnnualDataMap>({});
+  useEffect(() => {
+    loadAllAnnualData().then((data) => setAnnualDataMap(data));
+    return subscribeToProfileStore(() => {
+      loadAllAnnualData().then((data) => setAnnualDataMap(data));
+    });
+  }, []);
+
+  // リマインダー設定
+  const [reminders, setReminders] = useState<ReminderSetting[]>([
+    { label: "確定申告期限（3/17）", enabled: true, timing: "1week" },
+    { label: "確定申告受付開始（2/17～）", enabled: false, timing: "3days" },
+    { label: "住民税決定通知（5月）", enabled: true, timing: "3days" },
+    { label: "年末調整書類提出（11月）", enabled: false, timing: "1week" },
+    { label: "ふるさと納税の期限（12/31）", enabled: false, timing: "1week" },
+  ]);
+  const toggleReminder = (idx: number) => {
+    setReminders((prev) => prev.map((r, i) => i === idx ? { ...r, enabled: !r.enabled } : r));
+  };
+  const setReminderTiming = (idx: number, timing: ReminderTiming) => {
+    setReminders((prev) => prev.map((r, i) => i === idx ? { ...r, timing } : r));
+  };
 
   const currentMonth = new Date().getMonth() + 1;
 
@@ -126,16 +174,17 @@ export default function AnalysisScreen() {
   const takeHomeRatio = result ? result.takeHomeRatio : Math.round((383 / 500) * 100);
 
   // 同世代比較データ（年齢に応じて動的に生成）
+  // 国税庁「民間給与実態統計調査」のデータは額面（年収）ベースのため、ユーザーも額面で比較する
   const ageGroup = getAgeGroup(age);
   const peerAverage = getPeerAverage(age);
   const peerData = useMemo(() => {
-    const base = PEER_DATA_BY_AGE[ageGroup] ?? PEER_DATA_BY_AGE["30代後半"];
+    const base = PEER_DATA_BY_AGE[ageGroup] ?? PEER_DATA_BY_AGE["　3代後半"];
     return base.map((d) => ({
       ...d,
-      // ユーザーの手取りをハイライトバーに上書き
-      value: d.color === "#1A6FD4" ? takeHomeMan : d.value,
+      // ユーザーの額面（年収）をハイライトバーに上書き（国税庁データと同じ額面ベース）
+      value: d.color === "#1A6FD4" ? annualIncomeMan : d.value,
     }));
-  }, [ageGroup, takeHomeMan]);
+  }, [ageGroup, annualIncomeMan]);
 
   // 将来予測データ
   const futureData = useMemo(() => {
@@ -229,7 +278,7 @@ export default function AnalysisScreen() {
         {/* 右: 同世代比較 */}
         <View style={[styles.card, styles.comparisonColCard]}>
           <Text style={styles.cardTitle}>同世代比較</Text>
-          <Text style={styles.cardSubtitleSmall}>{ageGroup}の平均</Text>
+          <Text style={styles.cardSubtitleSmall}>{ageGroup}の平均額面</Text>
           <View style={styles.chartContainerSmall}>
             <BarChart
               data={peerData}
@@ -245,9 +294,9 @@ export default function AnalysisScreen() {
             </Text>
             <Text style={[
               styles.peerInsightDiff,
-              { color: takeHomeMan >= peerAverage ? "#2ECC71" : "#E05252" }
+              { color: annualIncomeMan >= peerAverage ? "#2ECC71" : "#E05252" }
             ]}>
-              {takeHomeMan >= peerAverage ? "+" : ""}{takeHomeMan - peerAverage}万円
+              {annualIncomeMan >= peerAverage ? "+" : ""}{annualIncomeMan - peerAverage}万円
             </Text>
           </View>
         </View>
@@ -305,6 +354,43 @@ export default function AnalysisScreen() {
           </Text>
         </View>
       </View>
+
+      {/* 手取りの推移カード */}
+      {(() => {
+        const sortedYears = Object.keys(annualDataMap)
+          .map(Number)
+          .sort((a, b) => a - b);
+        if (sortedYears.length < 2) return null;
+        const trendData = sortedYears.map((year) => ({
+          label: `${year}`,
+          value: parseFloat(annualDataMap[year]?.annualIncome ?? "0"),
+          color: "#1A6FD4",
+        }));
+        return (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>手取りの推移</Text>
+            <Text style={styles.cardSubtitle}>
+              設定タブに入力した年次データから生成（年収ベース）
+            </Text>
+            <View style={styles.chartContainer}>
+              <BarChart
+                data={trendData}
+                width={CHART_WIDTH}
+                height={160}
+                highlightIndex={trendData.length - 1}
+                unit="万円"
+              />
+            </View>
+            <View style={styles.insightBox}>
+              <Text style={styles.insightIcon}>📈</Text>
+              <Text style={styles.insightText}>
+                {sortedYears[0]}年から{sortedYears[sortedYears.length - 1]}年の{sortedYears.length}年間の年収推移です。
+                最新年度の年収は{trendData[trendData.length - 1]?.value ?? 0}万円です。
+              </Text>
+            </View>
+          </View>
+        );
+      })()}
     </View>
   );
 
@@ -464,23 +550,52 @@ export default function AnalysisScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>リマインダー設定</Text>
         <Text style={styles.cardSubtitle}>重要な税務イベントの通知を受け取る</Text>
-        {[
-          { label: "確定申告期限（3/17）", enabled: true },
-          { label: "住民税決定通知（5月）", enabled: true },
-          { label: "年末調整書類提出（11月）", enabled: false },
-        ].map((item) => (
+        {reminders.map((item, idx) => (
           <View key={item.label} style={styles.notificationRow}>
-            <Text style={styles.notificationLabel}>{item.label}</Text>
-            <View style={[styles.notificationToggle, item.enabled && styles.notificationToggleOn]}>
-              <Text style={styles.notificationToggleText}>{item.enabled ? "ON" : "OFF"}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.notificationLabel}>{item.label}</Text>
+              {item.enabled && (
+                <View style={styles.timingRow}>
+                  {(["1week", "3days"] as ReminderTiming[]).map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[
+                        styles.timingBtn,
+                        item.timing === t && styles.timingBtnActive,
+                        !isPremium && { opacity: 0.4 },
+                      ]}
+                      onPress={() => isPremium && setReminderTiming(idx, t)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.timingBtnText,
+                        item.timing === t && styles.timingBtnTextActive,
+                      ]}>{t === "1week" ? "1週間前" : "3日前"}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
+            <Switch
+              value={item.enabled}
+              onValueChange={() => {
+                if (!isPremium) return;
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                toggleReminder(idx);
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
+              disabled={!isPremium}
+            />
           </View>
         ))}
-        <View style={styles.premiumNotice}>
-          <Text style={styles.premiumNoticeText}>
-            🔒 通知設定は有料版でご利用いただけます
-          </Text>
-        </View>
+        {!isPremium && (
+          <View style={styles.premiumNotice}>
+            <Text style={styles.premiumNoticeText}>
+              🔒 通知設定は有料版でご利用いただけます
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -1048,6 +1163,32 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       fontSize: 12,
       fontWeight: "700",
       color: "#FFFFFF",
+    },
+    timingRow: {
+      flexDirection: "row" as const,
+      gap: 6,
+      marginTop: 6,
+    },
+    timingBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    timingBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + "20",
+    },
+    timingBtnText: {
+      fontSize: 11,
+      color: colors.muted,
+      fontWeight: "500" as const,
+    },
+    timingBtnTextActive: {
+      color: colors.primary,
+      fontWeight: "700" as const,
     },
     premiumNotice: {
       backgroundColor: "#FFF8EC",

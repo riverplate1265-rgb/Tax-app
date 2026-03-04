@@ -1,16 +1,14 @@
 import {
   HYOJUN_HOSHU_TABLE,
   NENKIN_HYOJUN_TABLE,
-  KENPO_HEALTH_RATES,
-  KAIGO_RATE,
-  KODOMO_KOSODATE_RATE,
-  KOUSEI_NENKIN_RATE,
-  KOYO_HOKEN_RATE,
 } from "./constants";
+import { getTaxConstants } from "./taxConstants";
 
 export interface TaxInput {
   birthDate: Date;
   annualIncome: number; // 万円単位
+  /** 計算対象年度（省略時は現在年度） */
+  targetYear?: number;
   hasSpouseDeduction: boolean;
   spouseDeductionOverride?: number; // 配偶者控除額のオーバーライド（年収から自動計算時に使用）
   childrenUnder19: number; // 16歳以19歳未満
@@ -104,13 +102,12 @@ function getHyojunShoyo(bonusAmount: number, type: "kenpo" | "nenkin"): number {
 }
 
 /**
- * 給与所得控除額を計算する
- * 令和8年度（2026年分）改正後：最低保障額74万円
- * 出典: 令和8年度税制改正大綱（令和7年12月26日閣議決定）
+ * 給与所得控除額を計算する（年度別最低保障額を受取）
+ * @param annualIncome 年収（円）
+ * @param minAmount 最低保障額（年度別定数から取得）
  */
-export function calcKyuyoShotokuKojo(annualIncome: number): number {
-  // 令和8・9年分：最低保障額74万円（本則69万円 + 特例5万円）
-  if (annualIncome <= 1_625_000) return 740_000;
+export function calcKyuyoShotokuKojoByYear(annualIncome: number, minAmount: number): number {
+  if (annualIncome <= 1_625_000) return minAmount;
   if (annualIncome <= 1_800_000) return Math.floor(annualIncome * 0.4) - 100_000;
   if (annualIncome <= 3_600_000) return Math.floor(annualIncome * 0.3) + 80_000;
   if (annualIncome <= 6_600_000) return Math.floor(annualIncome * 0.2) + 440_000;
@@ -119,49 +116,35 @@ export function calcKyuyoShotokuKojo(annualIncome: number): number {
 }
 
 /**
- * 令和8年度（2026年分）基礎控除額を計算する
- * 合計所得金額に応じて段階的に変化
- * 出典: 令和8年度税制改正大綱
- *
- * 令和8・9年分の特例：
- * - 合計所得489万円以下：本則62万円 + 特例加算42万円 = 104万円
- * - 合計所得489万円超～689万円以下：段階的に縮小
- * - 合計所得689万円超～889万円以下：さらに縮小
- * - 合計所得889万円超～2,350万円以下：62万円（本則のみ）
- * - 合計所得2,350万円超：0円
+ * 給与所得控除額を計算する（互換性のためのラッパー・現在年度を使用）
  */
-function calcKihonKojo(totalIncome: number): number {
-  if (totalIncome <= 4_890_000) return 1_040_000;
-  if (totalIncome <= 5_390_000) {
-    // 489万円超～539万円以下：104万円から段階的に縮小（20万円ずつ）
-    // 489万円超：84万円、509万円超：64万円
-    if (totalIncome <= 5_090_000) return 840_000;
-    return 640_000;
-  }
-  if (totalIncome <= 6_890_000) {
-    // 539万円超～689万円以下：段階的に縮小
-    if (totalIncome <= 5_890_000) return 420_000;
-    return 200_000; // 589万円超～689万円以下
-  }
-  if (totalIncome <= 8_890_000) {
-    // 689万円超～889万円以下：段階的に縮小
-    if (totalIncome <= 7_390_000) return 160_000;
-    if (totalIncome <= 7_890_000) return 120_000;
-    if (totalIncome <= 8_390_000) return 80_000;
-    return 40_000;
-  }
-  if (totalIncome <= 23_500_000) return 620_000; // 本則のみ
+export function calcKyuyoShotokuKojo(annualIncome: number): number {
+  const currentYear = new Date().getFullYear();
+  const tc = getTaxConstants(currentYear);
+  return calcKyuyoShotokuKojoByYear(annualIncome, tc.kyuyoShotokuKojoMin);
+}
+
+/**
+ * 基礎控除額を計算する（年度別基本額を受取）
+ * 年度別の定数（kihonKojoBase）に応じて段階的に変化
+ */
+function calcKihonKojoByYear(totalIncome: number, baseAmount: number): number {
+  // 令和8年度：58万円・令和7年度以前：48万円
+  // 逃減間の山は共通（合計所得に応じて段階的に縮小）
+  const base = baseAmount;
+  if (totalIncome <= 24_000_000) return base;
+  if (totalIncome <= 24_500_000) return Math.round(base * 2 / 3);
+  if (totalIncome <= 25_000_000) return Math.round(base / 3);
   return 0;
 }
 
 /**
- * 住民税の基礎控除額を計算する
- * 令和8年度：住民税の基礎控除は43万円のまま変更なし
+ * 住民税の基礎控除額を計算する（年度別基本額を受取）
  */
-function calcKihonKojoJumin(totalIncome: number): number {
-  if (totalIncome <= 24_000_000) return 430_000;
-  if (totalIncome <= 24_500_000) return 290_000;
-  if (totalIncome <= 25_000_000) return 150_000;
+function calcKihonKojoJuminByYear(totalIncome: number, baseAmount: number): number {
+  if (totalIncome <= 24_000_000) return baseAmount;
+  if (totalIncome <= 24_500_000) return Math.round(baseAmount * 2 / 3);
+  if (totalIncome <= 25_000_000) return Math.round(baseAmount / 3);
   return 0;
 }
 
@@ -259,12 +242,16 @@ function calcFurusatoTaxCredit(
 
 /**
  * 税金・社会保険料の計算メイン関数
- * 適用法令: 令和8年度（2026年3月1日現在）
+ * targetYearを指定すると年度別の税制定数で計算される
  */
 export function calculateTax(input: TaxInput): TaxResult {
   const currentYear = new Date().getFullYear();
-  const age = calcAge(input.birthDate, currentYear);
+  const targetYear = input.targetYear ?? currentYear;
+  const age = calcAge(input.birthDate, targetYear);
   const annualIncome = input.annualIncome * 10_000; // 万円→円
+
+  // 年度別税制定数を取得
+  const tc = getTaxConstants(targetYear);
 
   // ===== 月収・賞与の分割 =====
   // 賞与は月収×4ヶ月分。年収 = 月収×12 + 月収×4 = 月収×16
@@ -282,56 +269,51 @@ export function calculateTax(input: TaxInput): TaxResult {
   const hyojunShoyoNenkin = getHyojunShoyo(bonusPerPayment, "nenkin");
 
   // ===== 健康保険料 =====
-  const healthRate = KENPO_HEALTH_RATES[input.prefecture] ?? 4.925; // デフォルト東京
+  const healthRate = tc.kenpoHealthRates[input.prefecture] ?? tc.kenpoHealthRates["東京都"] ?? 4.925;
   const monthlyHealthInsurance = Math.floor(hyojunHoshuKenpo * (healthRate / 100));
   const annualHealthFromSalary = monthlyHealthInsurance * 12;
   const bonusHealthInsurance = Math.floor(hyojunShoyoKenpo * (healthRate / 100)) * bonusPayments;
   const annualHealthInsurance = annualHealthFromSalary + bonusHealthInsurance;
 
   // ===== 介護保険料（40歳以上65歳未満のみ）=====
-  // 令和8年3月分から：1.62%（被保険者負担0.81%）
   let annualNursingInsurance = 0;
   if (age >= 40 && age < 65) {
-    const monthlyNursing = Math.floor(hyojunHoshuKenpo * (KAIGO_RATE / 100));
+    const monthlyNursing = Math.floor(hyojunHoshuKenpo * (tc.kaigoRate / 100));
     const annualNursingFromSalary = monthlyNursing * 12;
-    const bonusNursing = Math.floor(hyojunShoyoKenpo * (KAIGO_RATE / 100)) * bonusPayments;
+    const bonusNursing = Math.floor(hyojunShoyoKenpo * (tc.kaigoRate / 100)) * bonusPayments;
     annualNursingInsurance = annualNursingFromSalary + bonusNursing;
   }
 
   // ===== 子ども・子育て支援金 =====
-  // 令和8年4月分（5月納付分）から徴収開始：0.23%（被保険者負担0.115%）
-  // 標準報酬月額・標準賞与額に対して計算
-  const monthlyKodomo = Math.floor(hyojunHoshuKenpo * (KODOMO_KOSODATE_RATE / 100));
-  // 4月分から9ヶ月分（4〜12月）を年間として計算
-  // 簡易診断では年間全額として計算（前提条件に記載）
+  const monthlyKodomo = Math.floor(hyojunHoshuKenpo * (tc.kodomoKosodateRate / 100));
   const annualKodomoFromSalary = monthlyKodomo * 12;
-  const bonusKodomo = Math.floor(hyojunShoyoKenpo * (KODOMO_KOSODATE_RATE / 100)) * bonusPayments;
+  const bonusKodomo = Math.floor(hyojunShoyoKenpo * (tc.kodomoKosodateRate / 100)) * bonusPayments;
   const annualKodomoKosodate = annualKodomoFromSalary + bonusKodomo;
 
-  // ===== 厚生年金保険料 =====
-  const monthlyPension = Math.floor(hyojunHoshuNenkin * (KOUSEI_NENKIN_RATE / 100));
+  // ===== 年金保険料 =====
+  const monthlyPension = Math.floor(hyojunHoshuNenkin * (tc.kouseiNenkinRate / 100));
   const annualPensionFromSalary = monthlyPension * 12;
-  const bonusPension = Math.floor(hyojunShoyoNenkin * (KOUSEI_NENKIN_RATE / 100)) * bonusPayments;
+  const bonusPension = Math.floor(hyojunShoyoNenkin * (tc.kouseiNenkinRate / 100)) * bonusPayments;
   const annualPension = annualPensionFromSalary + bonusPension;
 
   // ===== 雇用保険料 =====
-  const annualEmployment = Math.floor(annualIncome * (KOYO_HOKEN_RATE / 100));
+  const annualEmployment = Math.floor(annualIncome * (tc.koyoHokenRate / 100));
 
   // ===== 社会保険料合計 =====
   const totalSocialInsurance =
     annualHealthInsurance + annualNursingInsurance + annualKodomoKosodate +
     annualPension + annualEmployment;
 
-  // ===== 所得税の計算（令和8年分）=====
-  // 給与所得（令和8年度改正後の給与所得控除を適用）
-  const kyuyoShotokuKojo = calcKyuyoShotokuKojo(annualIncome);
+  // ===== 所得税の計算 =====
+  // 給与所得（年度別給与所得控除を適用）
+  const kyuyoShotokuKojo = calcKyuyoShotokuKojoByYear(annualIncome, tc.kyuyoShotokuKojoMin);
   const kyuyoShotoku = Math.max(0, annualIncome - kyuyoShotokuKojo);
 
   // 合計所得金額（給与所得のみの場合は給与所得と同額）
   const totalIncome = kyuyoShotoku;
 
-  // 基礎控除（令和8年度改正後）
-  const kihonKojo = calcKihonKojo(totalIncome);
+  // 基礎控除（年度別定数を使用）
+  const kihonKojo = calcKihonKojoByYear(totalIncome, tc.kihonKojoBase);
 
   // 社会保険料控除（全額控除）
   const shakaihokenKojo = totalSocialInsurance;
@@ -384,8 +366,7 @@ export function calculateTax(input: TaxInput): TaxResult {
 
   // ===== 住民税の計算 =====
   // 前年所得と同水準として計算
-  // 住民税の基礎控除は令和8年度も43万円のまま変更なし
-  const kihonKojoJumin = calcKihonKojoJumin(totalIncome);
+  const kihonKojoJumin = calcKihonKojoJuminByYear(totalIncome, tc.kihonKojoJuminBase);
   const taxableIncomeJumin = Math.max(
     0,
     kyuyoShotoku - kihonKojoJumin - shakaihokenKojo - haiguushaKojo - fuyoKojo

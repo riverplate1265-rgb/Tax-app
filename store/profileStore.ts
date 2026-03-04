@@ -7,6 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PROFILE_STORAGE_KEY = "@tax_app_profile";
 const ANNUAL_DATA_STORAGE_KEY = "@tax_app_annual_data";
+const PREMIUM_STORAGE_KEY = "@tax_app_is_premium";
 
 export type DisabilityType = "none" | "general" | "special" | "cohabiting_special";
 
@@ -55,6 +56,8 @@ export type AnnualDataMap = Record<number, AnnualData>;
 // インメモリキャッシュ
 let _cachedProfile: ProfileData | null = null;
 let _cachedAnnualData: AnnualDataMap = {};
+let _isPremium: boolean = false;
+let _premiumLoaded: boolean = false;
 let _listeners: Array<() => void> = [];
 
 /** プロフィールを保存する */
@@ -118,6 +121,33 @@ export async function getSavedYears(): Promise<number[]> {
     .sort((a, b) => b - a);
 }
 
+/** プレミアムフラグを保存する */
+export async function savePremium(value: boolean): Promise<void> {
+  _isPremium = value;
+  _premiumLoaded = true;
+  try {
+    await AsyncStorage.setItem(PREMIUM_STORAGE_KEY, JSON.stringify(value));
+  } catch (e) {
+    console.warn("[profileStore] savePremium failed:", e);
+  }
+  _listeners.forEach((fn) => fn());
+}
+/** プレミアムフラグを取得する */
+export async function loadPremium(): Promise<boolean> {
+  if (_premiumLoaded) return _isPremium;
+  try {
+    const json = await AsyncStorage.getItem(PREMIUM_STORAGE_KEY);
+    if (json !== null) _isPremium = JSON.parse(json);
+  } catch (e) {
+    console.warn("[profileStore] loadPremium failed:", e);
+  }
+  _premiumLoaded = true;
+  return _isPremium;
+}
+/** プレミアムフラグを同期的に取得する（キャッシュ済みの場合のみ） */
+export function getPremiumSync(): boolean {
+  return _isPremium;
+}
 /** 変更リスナーを登録する */
 export function subscribeToProfileStore(listener: () => void): () => void {
   _listeners.push(listener);

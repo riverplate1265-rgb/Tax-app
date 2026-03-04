@@ -301,8 +301,9 @@ export default function HomeScreen() {
     const input: TaxInput = {
       birthDate,
       annualIncome: parseFloat(annualIncome),
-      hasSpouseDeduction: spouseDeductionAmount > 0,
-      spouseDeductionOverride: spouseDeductionAmount > 0 ? spouseDeductionAmount : undefined,
+      // 簡易モード：トグル値を使用、詳細モード：設定タブから自動計算した値を使用
+      hasSpouseDeduction: mode === "simple" ? hasSpouseDeduction : spouseDeductionAmount > 0,
+      spouseDeductionOverride: mode === "detailed" && spouseDeductionAmount > 0 ? spouseDeductionAmount : undefined,
       childrenUnder19,
       childrenUnder23,
       prefecture,
@@ -338,7 +339,7 @@ export default function HomeScreen() {
       annualIncome: parseFloat(annualIncome),
       age,
       prefecture,
-      hasSpouseDeduction: spouseDeductionAmount > 0,
+      hasSpouseDeduction: mode === "simple" ? hasSpouseDeduction : spouseDeductionAmount > 0,
       childrenUnder19,
       childrenUnder23,
       mode,
@@ -524,45 +525,118 @@ export default function HomeScreen() {
 
             <View style={styles.divider} />
 
-            {/* 配偶者控除額（自動計算） */}
+            {/* 配偶者の扶養（簡易：トグル式、詳細：自動計算） */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>配偶者控除額</Text>
-              {spouseDeductionLabel !== "" ? (
-                <View style={styles.autoCalcBox}>
-                  <Text style={styles.autoCalcIcon}>💑</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.autoCalcTitle}>設定タブの配偶者年収から自動計算</Text>
-                    <Text style={styles.autoCalcText}>{spouseDeductionLabel}</Text>
-                  </View>
+              <Text style={styles.fieldLabel}>配偶者の扶養</Text>
+              {mode === "simple" ? (
+                <View style={styles.switchRow}>
+                  <Text style={styles.fieldHint}>配偶者控除（38万円）を適用する</Text>
+                  <Switch
+                    value={hasSpouseDeduction}
+                    onValueChange={(v) => {
+                      setHasSpouseDeduction(v);
+                      if (Platform.OS !== "web") {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }
+                    }}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#FFFFFF"
+                  />
                 </View>
               ) : (
-                <Text style={styles.fieldHint}>設定タブで配偶者情報を入力すると自動計算されます</Text>
+                spouseDeductionLabel !== "" ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>💑</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブの配偶者年収から自動計算</Text>
+                      <Text style={styles.autoCalcText}>{spouseDeductionLabel}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブで配偶者情報を入力すると自動計算されます</Text>
+                )
               )}
             </View>
 
             <View style={styles.divider} />
 
-            {/* 扶養控除（子供・自動計算） */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>扶養控除額</Text>
-              {dependentInfo !== "" ? (
-                <View style={styles.autoCalcBox}>
-                  <Text style={styles.autoCalcIcon}>👶</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.autoCalcTitle}>設定の子供情報から自動判定</Text>
-                    <Text style={styles.autoCalcText}>{dependentInfo}</Text>
-                    {childrenUnder19 > 0 && (
-                      <Text style={styles.autoCalcSub}>一般扶養：{childrenUnder19}人 × 38万円</Text>
-                    )}
-                    {childrenUnder23 > 0 && (
-                      <Text style={styles.autoCalcSub}>特定扶養：{childrenUnder23}人 × 63万円</Text>
-                    )}
+            {/* 子供の扶養（簡易：ステッパー式、詳細：自動計算） */}
+            {mode === "simple" ? (
+              <>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>子供（16歳以上19歳未満）</Text>
+                  <Text style={styles.fieldHint}>一般扶養親族：1人につき38万円控除</Text>
+                  <View style={[styles.stepperRow, { marginTop: 8 }]}>
+                    <View style={styles.stepper}>
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => adjustChildren("under19", -1)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.stepperBtnText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepperValue}>{childrenUnder19}</Text>
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => adjustChildren("under19", 1)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.stepperBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.fieldHint}>人</Text>
                   </View>
                 </View>
-              ) : (
-                <Text style={styles.fieldHint}>設定タブで子供の生年月日を入力すると自動計算されます</Text>
-              )}
-            </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>子供（19歳以上22歳以下）</Text>
+                  <Text style={styles.fieldHint}>特定扶養親族：1人につき63万円控除</Text>
+                  <View style={[styles.stepperRow, { marginTop: 8 }]}>
+                    <View style={styles.stepper}>
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => adjustChildren("under23", -1)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.stepperBtnText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepperValue}>{childrenUnder23}</Text>
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => adjustChildren("under23", 1)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.stepperBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.fieldHint}>人</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>扶養控除額</Text>
+                {dependentInfo !== "" ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>👶</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定の子供情報から自動判定</Text>
+                      <Text style={styles.autoCalcText}>{dependentInfo}</Text>
+                      {childrenUnder19 > 0 && (
+                        <Text style={styles.autoCalcSub}>一般扶養：{childrenUnder19}人 × 38万円</Text>
+                      )}
+                      {childrenUnder23 > 0 && (
+                        <Text style={styles.autoCalcSub}>特定扶養：{childrenUnder23}人 × 63万円</Text>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブで子供の生年月日を入力すると自動計算されます</Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.divider} />
 

@@ -256,19 +256,23 @@ export default function HomeScreen() {
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    const year = parseInt(birthYear, 10);
-    const month = parseInt(birthMonth, 10);
-    const day = parseInt(birthDay, 10);
 
-    if (!birthYear || !birthMonth || !birthDay) {
-      newErrors.birthDate = "生年月日を入力してください";
-    } else if (
-      isNaN(year) || isNaN(month) || isNaN(day) ||
-      year < 1920 || year > new Date().getFullYear() - 15 ||
-      month < 1 || month > 12 ||
-      day < 1 || day > 31
-    ) {
-      newErrors.birthDate = "正しい生年月日を入力してください";
+    // 詳細モードでは生年月日は設定タブから自動取得するためバリデーションをスキップ
+    if (mode === "simple") {
+      const year = parseInt(birthYear, 10);
+      const month = parseInt(birthMonth, 10);
+      const day = parseInt(birthDay, 10);
+
+      if (!birthYear || !birthMonth || !birthDay) {
+        newErrors.birthDate = "生年月日を入力してください";
+      } else if (
+        isNaN(year) || isNaN(month) || isNaN(day) ||
+        year < 1920 || year > new Date().getFullYear() - 15 ||
+        month < 1 || month > 12 ||
+        day < 1 || day > 31
+      ) {
+        newErrors.birthDate = "正しい生年月日を入力してください";
+      }
     }
 
     const income = parseFloat(annualIncome);
@@ -292,11 +296,11 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    const birthDate = new Date(
-      parseInt(birthYear, 10),
-      parseInt(birthMonth, 10) - 1,
-      parseInt(birthDay, 10)
-    );
+    // 詳細モードでは生年月日が未入力の場合、デフォルト値（1980年1月1日）を使用
+    const byear = parseInt(birthYear, 10) || 1980;
+    const bmonth = parseInt(birthMonth, 10) || 1;
+    const bday = parseInt(birthDay, 10) || 1;
+    const birthDate = new Date(byear, bmonth - 1, bday);
 
     const input: TaxInput = {
       birthDate,
@@ -327,10 +331,10 @@ export default function HomeScreen() {
     }).catch((e) => console.warn("[HomeScreen] cache save failed:", e));
 
     // 入力設定を保存（バックグラウンド）
+    // birth_date は annual_settings テーブルに存在しないため送信しない
     save({
       annual_income: parseFloat(annualIncome),
-      prefecture,
-      birth_date: `${birthYear}-${String(birthMonth).padStart(2, "0")}-${String(birthDay).padStart(2, "0")}`,
+      work_prefecture: prefecture,
     } as any).catch((e) => console.warn("[HomeScreen] settings save failed:", e));
 
     // 計算結果をグローバルストアに保存（分析タブで参照するため）

@@ -195,7 +195,7 @@ function calcIdecoDeduction(idecoMonthly: number): number {
  * 一般生命保険料・介護医療保険料・個人年金保険料それぞれ最大4万円、合計最大12万円
  * 簡易計算：年間保険料から控除額を算出（一般生命保険料のみとして計算）
  */
-function calcLifeInsuranceDeduction(annualPremium: number): number {
+export function calcLifeInsuranceDeduction(annualPremium: number): number {
   // 新制度の控除額計算（一般生命保険料として計算）
   if (annualPremium <= 20_000) return annualPremium;
   if (annualPremium <= 40_000) return Math.floor(annualPremium / 2) + 10_000;
@@ -208,7 +208,7 @@ function calcLifeInsuranceDeduction(annualPremium: number): number {
  * 控除額 = 実際の医療費 - 保険金等で補填された金額 - 10万円（または総所得の5%の低い方）
  * 上限: 200万円
  */
-function calcMedicalExpenseDeduction(medicalExpenses: number, totalIncome: number): number {
+export function calcMedicalExpenseDeduction(medicalExpenses: number, totalIncome: number): number {
   const threshold = Math.min(100_000, totalIncome * 0.05);
   const deduction = Math.max(0, medicalExpenses - threshold);
   return Math.min(deduction, 2_000_000);

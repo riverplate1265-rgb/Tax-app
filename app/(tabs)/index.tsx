@@ -17,7 +17,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { PREFECTURES } from "@/lib/constants";
-import { calculateTax, type TaxInput } from "@/lib/taxCalculator";
+import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
@@ -690,8 +690,7 @@ export default function HomeScreen() {
               {/* iDeCo */}
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>iDeCo 月額掛金</Text>
-                <Text style={styles.fieldHint}>全額所得控除。上限：会社員2.3万円/月</Text>
-                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                <View style={[styles.incomeRow, { marginTop: 4 }]}>
                   <TextInput
                     style={styles.detailInput}
                     placeholder="23000"
@@ -710,8 +709,7 @@ export default function HomeScreen() {
               {/* ふるさと納税 */}
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>ふるさと納税 年間寄付額</Text>
-                <Text style={styles.fieldHint}>2,000円を超える部分が税額控除されます</Text>
-                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                <View style={[styles.incomeRow, { marginTop: 4 }]}>
                   <TextInput
                     style={styles.detailInput}
                     placeholder="50000"
@@ -730,8 +728,7 @@ export default function HomeScreen() {
               {/* 住宅ローン控除 */}
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>住宅ローン年末残高</Text>
-                <Text style={styles.fieldHint}>残高×0.7%が税額控除（令和4年以降入居）</Text>
-                <View style={[styles.incomeRow, { marginTop: 8 }]}>
+                <View style={[styles.incomeRow, { marginTop: 4 }]}>
                   <TextInput
                     style={styles.detailInput}
                     placeholder="30000000"
@@ -747,47 +744,51 @@ export default function HomeScreen() {
 
               <View style={styles.divider} />
 
-              {/* 生命保険料控除 */}
+              {/* 生命保険料控除額（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>生命保険料 年間支払額</Text>
-                <Text style={styles.fieldHint}>新制度：最大4万円の所得控除</Text>
-                <View style={[styles.incomeRow, { marginTop: 8 }]}>
-                  <TextInput
-                    style={styles.detailInput}
-                    placeholder="120000"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="number-pad"
-                    value={lifeInsurancePremium}
-                    onChangeText={setLifeInsurancePremium}
-                    returnKeyType="next"
-                  />
-                  <Text style={styles.incomeUnit}>円/年</Text>
-                </View>
+                <Text style={styles.fieldLabel}>生命保険料控除額</Text>
+                {lifeInsurancePremium ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>📊</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブの年間支払額から自動計算</Text>
+                      <Text style={styles.autoCalcText}>
+                        年間支払額 {parseInt(lifeInsurancePremium).toLocaleString()}円
+                        {" → "}控除額 {calcLifeInsuranceDeduction(parseInt(lifeInsurancePremium)).toLocaleString()}円
+                      </Text>
+                      <Text style={styles.autoCalcSub}>新制度：一般生命保険料として計算（上限：4万円）</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブの「年次データ」で生命保険料を入力すると自動計算されます</Text>
+                )}
               </View>
 
               <View style={styles.divider} />
 
-              {/* 医療費控除 */}
+              {/* 医療費控除額（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>医療費 年間支払額</Text>
-                <Text style={styles.fieldHint}>
-                  10万円超の部分が所得控除（上限200万円）
-                  {medicalExpenses && parseInt(medicalExpenses) > 100000
-                    ? `　→ 控除額：${Math.min(parseInt(medicalExpenses) - 100000, 2000000).toLocaleString()}円`
-                    : ""}
-                </Text>
-                <View style={[styles.incomeRow, { marginTop: 8 }]}>
-                  <TextInput
-                    style={styles.detailInput}
-                    placeholder="150000"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="number-pad"
-                    value={medicalExpenses}
-                    onChangeText={setMedicalExpenses}
-                    returnKeyType="done"
-                  />
-                  <Text style={styles.incomeUnit}>円/年</Text>
-                </View>
+                <Text style={styles.fieldLabel}>医療費控除額</Text>
+                {medicalExpenses ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>🏥</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブの年間見込額から自動計算</Text>
+                      <Text style={styles.autoCalcText}>
+                        年間医療費 {parseInt(medicalExpenses).toLocaleString()}円
+                        {" → "}控除額 {calcMedicalExpenseDeduction(parseInt(medicalExpenses), parseFloat(annualIncome) * 10000).toLocaleString()}円
+                      </Text>
+                      {parseInt(medicalExpenses) <= 100000 && (
+                        <Text style={styles.autoCalcSub}>❗ 10万円以下のため控除なし（超過分のみ控除対象）</Text>
+                      )}
+                      {parseInt(medicalExpenses) > 100000 && (
+                        <Text style={styles.autoCalcSub}>計算式：{parseInt(medicalExpenses).toLocaleString()}円 - 100,000円 = {(parseInt(medicalExpenses) - 100000).toLocaleString()}円</Text>
+                      )}
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブの「年次データ」で医療費年間見込額を入力すると自動計算されます</Text>
+                )}
               </View>
             </View>
           )}

@@ -680,6 +680,7 @@ export default function SettingsScreen() {
               />
               <Text style={styles.inputUnit}>円</Text>
             </View>
+            <Text style={styles.fieldNote}>全額所得控除。上限：会社員2.3万円/月（企業型DCなし）・1.2万円/月（企業型DCあり）</Text>
           </View>
 
           <View style={styles.divider} />
@@ -699,6 +700,7 @@ export default function SettingsScreen() {
               />
               <Text style={styles.inputUnit}>円</Text>
             </View>
+            <Text style={styles.fieldNote}>2,000円を超える部分が税額控除されます（ワンストップ特例または確定申告が必要）</Text>
           </View>
 
           <View style={styles.divider} />
@@ -718,13 +720,14 @@ export default function SettingsScreen() {
               />
               <Text style={styles.inputUnit}>円</Text>
             </View>
+            <Text style={styles.fieldNote}>残高×0.7%が税額控除（令和4年以降入居・上限：新築認定住宅35万円、一般住宅21万円）</Text>
           </View>
 
           <View style={styles.divider} />
 
           {/* 生命保険料 */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>生命保険料（年間）</Text>
+            <Text style={styles.fieldLabel}>生命保険料 年間支払額</Text>
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
@@ -737,6 +740,7 @@ export default function SettingsScreen() {
               />
               <Text style={styles.inputUnit}>円</Text>
             </View>
+            <Text style={styles.fieldNote}>新制度：年間支払額に応じて最大4万円の所得控除（一般・介護医療・個人年金の合計最大12万円）</Text>
           </View>
 
           <View style={styles.divider} />

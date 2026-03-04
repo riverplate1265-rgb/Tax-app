@@ -220,7 +220,7 @@ export function calcMedicalExpenseDeduction(medicalExpenses: number, totalIncome
  * 上限: 新築認定住宅 35万円、新築ZEH水準 31.5万円、新築省エネ基準 28万円、その他 21万円
  * 簡易計算として年末残高 × 0.7%、上限35万円で計算
  */
-function calcHousingLoanDeduction(loanBalance: number): number {
+export function calcHousingLoanDeduction(loanBalance: number): number {
   const deduction = Math.floor(loanBalance * 0.007);
   return Math.min(deduction, 350_000);
 }

@@ -17,7 +17,7 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { PREFECTURES } from "@/lib/constants";
-import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, type TaxInput } from "@/lib/taxCalculator";
+import { calculateTax, calcLifeInsuranceDeduction, calcMedicalExpenseDeduction, calcHousingLoanDeduction, type TaxInput } from "@/lib/taxCalculator";
 import { useColors } from "@/hooks/use-colors";
 import { useAnnualSettings } from "@/hooks/use-annual-settings";
 import { useAuthLink } from "@/hooks/use-auth-link";
@@ -725,21 +725,24 @@ export default function HomeScreen() {
 
               <View style={styles.divider} />
 
-              {/* 住宅ローン控除 */}
+              {/* 住宅ローン控除（設定タブから自動計算） */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>住宅ローン年末残高</Text>
-                <View style={[styles.incomeRow, { marginTop: 4 }]}>
-                  <TextInput
-                    style={styles.detailInput}
-                    placeholder="30000000"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="number-pad"
-                    value={housingLoanBalance}
-                    onChangeText={setHousingLoanBalance}
-                    returnKeyType="next"
-                  />
-                  <Text style={styles.incomeUnit}>円</Text>
-                </View>
+                <Text style={styles.fieldLabel}>住宅ローン控除</Text>
+                {housingLoanBalance ? (
+                  <View style={styles.autoCalcBox}>
+                    <Text style={styles.autoCalcIcon}>🏠</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.autoCalcTitle}>設定タブの年末残高から自動計算</Text>
+                      <Text style={styles.autoCalcText}>
+                        年末残高 {parseInt(housingLoanBalance).toLocaleString()}円
+                        {" → "}税額控除 {calcHousingLoanDeduction(parseInt(housingLoanBalance)).toLocaleString()}円
+                      </Text>
+                      <Text style={styles.autoCalcSub}>計算式：年末残高 × 0.7%（上限：35万円）</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.fieldHint}>設定タブの「年次データ」で住宅ローン残高を入力すると自動計算されます</Text>
+                )}
               </View>
 
               <View style={styles.divider} />

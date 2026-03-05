@@ -885,25 +885,31 @@ export default function AnalysisScreen() {
           ))}
         </ScrollView>
 
-        {/* タブコンテンツ */}
-        {renderTabContent()}
-
-        {/* 有料バナー（未加入時のみ表示） */}
-        {!isPremium && (
-          <TouchableOpacity
-            style={styles.analysisPremiumBanner}
-            onPress={() => setShowPremiumModal(true)}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.analysisPremiumBannerIcon}>⭐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.analysisPremiumBannerTitle}>有料版で詳細な分析ができるようになります</Text>
-              <Text style={styles.analysisPremiumBannerText}>複数年度比較・税理士監修の節税提案・詳細PDFレポートなど</Text>
+        {/* タブコンテンツ（有料版ロック） */}
+        {isPremium ? (
+          renderTabContent()
+        ) : (
+          <View style={styles.lockedContentWrapper}>
+            {/* コンテンツを薄く表示 */}
+            <View style={styles.lockedContentBlur} pointerEvents="none">
+              {renderTabContent()}
             </View>
-            <View style={styles.analysisPremiumBannerBtn}>
-              <Text style={styles.analysisPremiumBannerBtnText}>アップグレード</Text>
-            </View>
-          </TouchableOpacity>
+            {/* ロックオーバーレイ */}
+            <TouchableOpacity
+              style={styles.lockOverlay}
+              onPress={() => setShowPremiumModal(true)}
+              activeOpacity={0.9}
+            >
+              <View style={styles.lockOverlayInner}>
+                <Text style={styles.lockOverlayIcon}>🔒</Text>
+                <Text style={styles.lockOverlayTitle}>プレミアム会員限定</Text>
+                <Text style={styles.lockOverlayText}>詳細な分析・比較・節税提案は{"\n"}有料版でご利用いただけます</Text>
+                <View style={styles.lockOverlayBtn}>
+                  <Text style={styles.lockOverlayBtnText}>アップグレードする</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
 
@@ -1686,6 +1692,57 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     premiumPurchaseBtnText: {
       fontSize: 17,
       fontWeight: "800" as const,
+      color: "#FFFFFF",
+    },
+    // ロックオーバーレイ
+    lockedContentWrapper: {
+      position: "relative" as const,
+    },
+    lockedContentBlur: {
+      opacity: 0.15,
+    },
+    lockOverlay: {
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      borderRadius: 16,
+      minHeight: 280,
+    },
+    lockOverlayInner: {
+      alignItems: "center" as const,
+      paddingHorizontal: 32,
+    },
+    lockOverlayIcon: {
+      fontSize: 48,
+      marginBottom: 12,
+    },
+    lockOverlayTitle: {
+      fontSize: 20,
+      fontWeight: "800" as const,
+      color: "#FFFFFF",
+      marginBottom: 8,
+    },
+    lockOverlayText: {
+      fontSize: 14,
+      color: "rgba(255,255,255,0.85)",
+      textAlign: "center" as const,
+      lineHeight: 22,
+      marginBottom: 24,
+    },
+    lockOverlayBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 24,
+      paddingVertical: 14,
+      paddingHorizontal: 32,
+    },
+    lockOverlayBtnText: {
+      fontSize: 16,
+      fontWeight: "700" as const,
       color: "#FFFFFF",
     },
   });

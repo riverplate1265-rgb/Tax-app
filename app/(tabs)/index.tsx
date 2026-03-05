@@ -760,7 +760,7 @@ export default function HomeScreen() {
 
           {/* 詳細モード：控除フォーム */}
           {mode === "detailed" && (
-            <View style={styles.card}>
+            <View style={[styles.card, { position: "relative" as const }]}>
               <View style={styles.detailHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardSectionTitle}>控除情報</Text>
@@ -894,22 +894,20 @@ export default function HomeScreen() {
                 )}
               </View>
 
-              {/* 有料バナー（未加入時のみ表示） */}
+              {/* ロックオーバーレイ（未加入時のみ） */}
               {!isPremium && (
-                <View style={styles.premiumBanner}>
-                  <Text style={styles.premiumBannerIcon}>⭐</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.premiumBannerTitle}>有料版で精密計算できるようになります</Text>
-                    <Text style={styles.premiumBannerText}>年間費用詳細入力・複数年度比較・税理士監修の計算エンジンなど</Text>
+                <TouchableOpacity
+                  style={styles.detailLockOverlay}
+                  onPress={() => setShowPremiumModal(true)}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.detailLockIcon}>🔒</Text>
+                  <Text style={styles.detailLockTitle}>プレミアム会員限定</Text>
+                  <Text style={styles.detailLockText}>控除情報の入力・精密計算は{"\n"}有料版でご利用いただけます</Text>
+                  <View style={styles.detailLockBtn}>
+                    <Text style={styles.detailLockBtnText}>アップグレードする</Text>
                   </View>
-                  <TouchableOpacity
-                    style={styles.premiumBannerBtn}
-                    onPress={() => setShowPremiumModal(true)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.premiumBannerBtnText}>アップグレード</Text>
-                  </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -1566,6 +1564,48 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     premiumBannerBtnText: {
       fontSize: 12,
       fontWeight: "700",
+      color: "#FFFFFF",
+    },
+    // 詳細モードロックオーバーレイ
+    detailLockOverlay: {
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.55)",
+      borderRadius: 16,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: 32,
+      minHeight: 200,
+    },
+    detailLockIcon: {
+      fontSize: 44,
+      marginBottom: 12,
+    },
+    detailLockTitle: {
+      fontSize: 18,
+      fontWeight: "800" as const,
+      color: "#FFFFFF",
+      marginBottom: 8,
+    },
+    detailLockText: {
+      fontSize: 13,
+      color: "rgba(255,255,255,0.85)",
+      textAlign: "center" as const,
+      lineHeight: 20,
+      marginBottom: 20,
+    },
+    detailLockBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 22,
+      paddingVertical: 12,
+      paddingHorizontal: 28,
+    },
+    detailLockBtnText: {
+      fontSize: 15,
+      fontWeight: "700" as const,
       color: "#FFFFFF",
     },
   });

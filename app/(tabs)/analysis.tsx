@@ -1071,25 +1071,20 @@ export default function AnalysisScreen() {
         {isPremium ? (
           renderTabContent()
         ) : (
-          <View style={styles.lockedContentWrapper}>
-            <View style={styles.lockedContentBlur} pointerEvents="none">
-              {renderTabContent()}
-            </View>
-            <TouchableOpacity
-              style={styles.lockOverlay}
-              onPress={() => setShowPremiumModal(true)}
-              activeOpacity={0.9}
-            >
-              <View style={styles.lockOverlayInner}>
-                <Text style={styles.lockOverlayIcon}>🔒</Text>
-                <Text style={styles.lockOverlayTitle}>プレミアム会員限定</Text>
-                <Text style={styles.lockOverlayText}>詳細な分析・比較・節税提案は{"\n"}有料版でご利用いただけます</Text>
-                <View style={styles.lockOverlayBtn}>
-                  <Text style={styles.lockOverlayBtnText}>アップグレードする</Text>
-                </View>
+          <TouchableOpacity
+            style={styles.lockOverlay}
+            onPress={() => setShowPremiumModal(true)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.lockOverlayInner}>
+              <Text style={styles.lockOverlayIcon}>🔒</Text>
+              <Text style={styles.lockOverlayTitle}>プレミアム会員限定</Text>
+              <Text style={styles.lockOverlayText}>詳細な分析・比較・節税提案は{"\n"}有料版でご利用いただけます</Text>
+              <View style={styles.lockOverlayBtn}>
+                <Text style={styles.lockOverlayBtnText}>アップグレードする</Text>
               </View>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
         )}
       </ScrollView>
 
@@ -1977,16 +1972,15 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       opacity: 0.15,
     },
     lockOverlay: {
-      position: "absolute" as const,
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
       justifyContent: "center" as const,
       alignItems: "center" as const,
-      backgroundColor: "rgba(0,0,0,0.45)",
+      backgroundColor: colors.background,
       borderRadius: 16,
-      minHeight: 280,
+      minHeight: 320,
+      marginHorizontal: 16,
+      marginTop: 8,
+      borderWidth: 2,
+      borderColor: colors.primary + "40",
     },
     lockOverlayInner: {
       alignItems: "center" as const,
@@ -1995,16 +1989,17 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     lockOverlayIcon: {
       fontSize: 48,
       marginBottom: 12,
+      color: colors.primary,
     },
     lockOverlayTitle: {
       fontSize: 20,
       fontWeight: "800" as const,
-      color: "#FFFFFF",
+      color: colors.foreground,
       marginBottom: 8,
     },
     lockOverlayText: {
       fontSize: 14,
-      color: "rgba(255,255,255,0.85)",
+      color: colors.muted,
       textAlign: "center" as const,
       lineHeight: 22,
       marginBottom: 24,

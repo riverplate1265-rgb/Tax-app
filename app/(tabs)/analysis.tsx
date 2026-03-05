@@ -5,6 +5,7 @@ import {
   View,
   TouchableOpacity,
   Switch,
+  Modal,
   StyleSheet,
   Platform,
   Dimensions,
@@ -134,10 +135,18 @@ export default function AnalysisScreen() {
 
   // プレミアムフラグ
   const [isPremium, setIsPremium] = useState(() => getPremiumSync());
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   useEffect(() => {
     loadPremium().then((v) => setIsPremium(v));
     return subscribeToProfileStore(() => setIsPremium(getPremiumSync()));
   }, []);
+
+  const handlePremiumPurchase = async () => {
+    const { savePremium } = await import("@/store/profileStore");
+    await savePremium(true);
+    setIsPremium(true);
+    setShowPremiumModal(false);
+  };
 
   // 年次データ（手取り推移チャート用）
   const [annualDataMap, setAnnualDataMap] = useState<AnnualDataMap>({});
@@ -835,18 +844,77 @@ export default function AnalysisScreen() {
         {/* タブコンテンツ */}
         {renderTabContent()}
 
-        {/* 有料バナー */}
-        <View style={styles.analysisPremiumBanner}>
-          <Text style={styles.analysisPremiumBannerIcon}>⭐</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.analysisPremiumBannerTitle}>有料版で詳細な分析ができるようになります</Text>
-            <Text style={styles.analysisPremiumBannerText}>複数年度比較・税理士監修の節税提案・詳細PDFレポートなど</Text>
-          </View>
-          <TouchableOpacity style={styles.analysisPremiumBannerBtn} activeOpacity={0.8}>
-            <Text style={styles.analysisPremiumBannerBtnText}>アップグレード</Text>
+        {/* 有料バナー（未加入時のみ表示） */}
+        {!isPremium && (
+          <TouchableOpacity
+            style={styles.analysisPremiumBanner}
+            onPress={() => setShowPremiumModal(true)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.analysisPremiumBannerIcon}>⭐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.analysisPremiumBannerTitle}>有料版で詳細な分析ができるようになります</Text>
+              <Text style={styles.analysisPremiumBannerText}>複数年度比較・税理士監修の節税提案・詳細PDFレポートなど</Text>
+            </View>
+            <View style={styles.analysisPremiumBannerBtn}>
+              <Text style={styles.analysisPremiumBannerBtnText}>アップグレード</Text>
+            </View>
           </TouchableOpacity>
-        </View>
+        )}
       </ScrollView>
+
+      {/* プレミアムモーダル */}
+      <Modal
+        visible={showPremiumModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPremiumModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>プレミアムプラン</Text>
+            <TouchableOpacity onPress={() => setShowPremiumModal(false)}>
+              <Text style={styles.modalClose}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+            <View style={[styles.card, { alignItems: "center", marginBottom: 16 }]}>
+              <Text style={{ fontSize: 32, marginBottom: 4 }}>✨</Text>
+              <Text style={{ fontSize: 22, fontWeight: "800", color: colors.foreground, marginBottom: 4 }}>プレミアムプラン</Text>
+              <Text style={{ fontSize: 28, fontWeight: "800", color: colors.primary }}>&#165;500<Text style={{ fontSize: 14, fontWeight: "400", color: colors.muted }}>/年（税込）</Text></Text>
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>月あたり約42円</Text>
+            </View>
+            {[
+              { icon: "🎯", title: "詳細計算モード", desc: "iDeCo・ふるさと納税・住宅ローン控除を含む1円単位の精密計算" },
+              { icon: "📊", title: "分析タブ全機能", desc: "同世代比較・将来予測・税の使い道・税務カレンダー" },
+              { icon: "💡", title: "節税提案", desc: "あなたの状況に最適化されたiDeCo・ふるさと納税の推奨額を計算" },
+              { icon: "👤", title: "基本プロフィール入力", desc: "生年月日・配偶者・子供の情報を登録して精密な計算に活用" },
+              { icon: "📄", title: "PDFレポート出力", desc: "分析結果をPDFでダウンロード・共有" },
+              { icon: "☁️", title: "クラウド同期", desc: "複数デバイスでデータを同期" },
+              { icon: "🚫", title: "広告なし", desc: "アプリ内の広告を非表示にしてスッキり使える" },
+            ].map((f) => (
+              <View key={f.title} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
+                <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground, marginBottom: 2 }}>{f.title}</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>{f.desc}</Text>
+                </View>
+                <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "700" }}>✓</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={styles.premiumPurchaseBtn}
+              onPress={handlePremiumPurchase}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.premiumPurchaseBtnText}>¥500/年 でアップグレード</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center", marginTop: 12, lineHeight: 18 }}>
+              購入はApp Store / Google Playを通じて処理されます。{"\n"}サブスクリプションは自動更新されます。いつでもキャンセル可能です。
+            </Text>
+          </ScrollView>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -1536,6 +1604,44 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     analysisPremiumBannerBtnText: {
       fontSize: 12,
       fontWeight: "700",
+      color: "#FFFFFF",
+    },
+    // モーダル共通
+    modalContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    modalHeader: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "space-between" as const,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: 17,
+      fontWeight: "700" as const,
+      color: colors.foreground,
+    },
+    modalClose: {
+      fontSize: 15,
+      color: colors.primary,
+      fontWeight: "600" as const,
+    },
+    // プレミアム購入ボタン
+    premiumPurchaseBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 16,
+      alignItems: "center" as const,
+      marginTop: 24,
+      marginBottom: 12,
+    },
+    premiumPurchaseBtnText: {
+      fontSize: 17,
+      fontWeight: "800" as const,
       color: "#FFFFFF",
     },
   });

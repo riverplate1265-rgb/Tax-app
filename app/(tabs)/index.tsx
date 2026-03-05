@@ -89,6 +89,7 @@ export default function HomeScreen() {
   // 配偶者控除額（設定タブの配偶者年収から自動計算）
   const [spouseDeductionAmount, setSpouseDeductionAmount] = useState<number>(0);
   const [spouseDeductionLabel, setSpouseDeductionLabel] = useState<string>("");
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   // 設定タブのデータを読み込んで詳細モードに反映
   useEffect(() => {
@@ -261,10 +262,27 @@ export default function HomeScreen() {
   };
 
   const handleModeToggle = (isDetailed: boolean) => {
+    if (isDetailed && !isPremium) {
+      // 有料版未加入の場合はプレミアムモーダルを表示
+      setShowPremiumModal(true);
+      return;
+    }
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setMode(isDetailed ? "detailed" : "simple");
+  };
+
+  const handlePremiumPurchase = async () => {
+    const { savePremium } = await import("@/store/profileStore");
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    await savePremium(true);
+    setIsPremium(true);
+    setShowPremiumModal(false);
+    // アンロック後に詳細モードへ移行
+    setMode("detailed");
   };
 
   const validate = (): boolean => {
@@ -445,7 +463,7 @@ export default function HomeScreen() {
                   mode === "detailed" && styles.modeToggleBtnTextActive,
                 ]}
               >
-                詳細
+                {!isPremium ? "🔒 " : ""}詳細
               </Text>
               <View style={styles.premiumBadge}>
                 <Text style={styles.premiumBadgeText}>PRO</Text>
@@ -875,17 +893,23 @@ export default function HomeScreen() {
                 )}
               </View>
 
-              {/* 有料バナー */}
-              <View style={styles.premiumBanner}>
-                <Text style={styles.premiumBannerIcon}>⭐</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.premiumBannerTitle}>有料版で精密計算できるようになります</Text>
-                  <Text style={styles.premiumBannerText}>年間費用詳細入力・複数年度比較・税理士監修の計算エンジンなど</Text>
+              {/* 有料バナー（未加入時のみ表示） */}
+              {!isPremium && (
+                <View style={styles.premiumBanner}>
+                  <Text style={styles.premiumBannerIcon}>⭐</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.premiumBannerTitle}>有料版で精密計算できるようになります</Text>
+                    <Text style={styles.premiumBannerText}>年間費用詳細入力・複数年度比較・税理士監修の計算エンジンなど</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.premiumBannerBtn}
+                    onPress={() => setShowPremiumModal(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.premiumBannerBtnText}>アップグレード</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.premiumBannerBtn} activeOpacity={0.8}>
-                  <Text style={styles.premiumBannerBtnText}>アップグレード</Text>
-                </TouchableOpacity>
-              </View>
+              )}
             </View>
           )}
 
@@ -956,6 +980,59 @@ export default function HomeScreen() {
             )}
             ItemSeparatorComponent={() => <View style={styles.prefDivider} />}
           />
+        </View>
+      </Modal>
+
+      {/* プレミアムモーダル */}
+      <Modal
+        visible={showPremiumModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPremiumModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>プレミアムプラン</Text>
+            <TouchableOpacity onPress={() => setShowPremiumModal(false)}>
+              <Text style={styles.modalClose}>閉じる</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+            <View style={[styles.card, { alignItems: "center", marginBottom: 16 }]}>
+              <Text style={{ fontSize: 32, marginBottom: 4 }}>✨</Text>
+              <Text style={{ fontSize: 22, fontWeight: "800", color: colors.foreground, marginBottom: 4 }}>プレミアムプラン</Text>
+              <Text style={{ fontSize: 28, fontWeight: "800", color: colors.primary }}>&#165;500<Text style={{ fontSize: 14, fontWeight: "400", color: colors.muted }}>/年（税込）</Text></Text>
+              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>月あたり約42円</Text>
+            </View>
+            {[
+              { icon: "🎯", title: "詳細計算モード", desc: "iDeCo・ふるさと納税・住宅ローン控除を含む1円単位の精密計算" },
+              { icon: "📊", title: "分析タブ全機能", desc: "同世代比較・将来予測・税の使い道・税務カレンダー" },
+              { icon: "💡", title: "節税提案", desc: "あなたの状況に最適化されたiDeCo・ふるさと納税の推奨額を計算" },
+              { icon: "👤", title: "基本プロフィール入力", desc: "生年月日・配偶者・子供の情報を登録して精密な計算に活用" },
+              { icon: "📄", title: "PDFレポート出力", desc: "分析結果をPDFでダウンロード・共有" },
+              { icon: "☁️", title: "クラウド同期", desc: "複数デバイスでデータを同期" },
+              { icon: "🚫", title: "広告なし", desc: "アプリ内の広告を非表示にしてスッキり使える" },
+            ].map((f) => (
+              <View key={f.title} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
+                <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground, marginBottom: 2 }}>{f.title}</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted, lineHeight: 18 }}>{f.desc}</Text>
+                </View>
+                <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "700" }}>✓</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={[styles.calcButton, { marginTop: 8 }]}
+              onPress={handlePremiumPurchase}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.calcButtonText}>¥500/年 でアップグレード</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center", marginTop: 12, lineHeight: 18 }}>
+              購入はApp Store / Google Playを通じて処理されます。{"\n"}サブスクリプションは自動更新されます。いつでもキャンセル可能です。
+            </Text>
+          </ScrollView>
         </View>
       </Modal>
 

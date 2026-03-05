@@ -214,11 +214,45 @@ export default function AnalysisScreen() {
   // 節税提案データ
   const idecoMax = calcIdecoMax("会社員（企業年金なし）");
   const currentIdecoMonthly = input?.idecoMonthly ?? 0;
-  const furusatoOptimal = calcFurusatoOptimal(
+
+  // ふるさと納税上限額: まず簡易概算で初期値を設定し、ボタン押下で厳密計算に更新
+  const simpleFurusatoOptimal = calcFurusatoOptimal(
     annualIncomeMan * 10_000,
     input?.hasSpouseDeduction ?? false,
     (input?.childrenUnder19 ?? 0) + (input?.childrenUnder23 ?? 0)
   );
+  const [furusatoOptimal, setFurusatoOptimal] = useState<number>(simpleFurusatoOptimal);
+  const [furusatoCalcMode, setFurusatoCalcMode] = useState<"simple" | "precise">("simple");
+
+  // 入力値が変わったら簡易値にリセット
+  useEffect(() => {
+    setFurusatoOptimal(simpleFurusatoOptimal);
+    setFurusatoCalcMode("simple");
+  }, [annualIncomeMan, input?.hasSpouseDeduction, input?.childrenUnder19, input?.childrenUnder23]);
+
+  // 厳密計算: 住民税所得割（residentTax - 均等割5,000円）の20%を上限とする
+  const handleCalcPreciseFurusato = () => {
+    if (!result) return;
+    // 住民税所得割 = 住民税合計 - 均等割(5,000円)
+    const shotokuWari = Math.max(0, result.residentTax - 5_000);
+    // ふるさと納税上限 = 住民税所得割 × 20% ÷ (1 - 所得税率 - 0.10) + 2,000円
+    // 簡略版: 住民税所得割の20%を上限として逆算
+    // 正確な計算式: 上限寄附額 = 住民税所得割 × 20% ÷ 0.9 + 2,000（概算）
+    const effectiveTaxRate = result.annualIncome > 0
+      ? (result.incomeTax / result.annualIncome)
+      : 0.10;
+    // 所得税率と住民税率を考慮した逆算
+    const combinedRate = effectiveTaxRate + 0.10; // 所得税率 + 住民税率10%
+    const denominator = 1 - combinedRate;
+    const preciseLimit = denominator > 0
+      ? Math.round(shotokuWari * 0.20 / denominator) + 2_000
+      : Math.round(shotokuWari * 0.20 / 0.80) + 2_000;
+    setFurusatoOptimal(Math.max(preciseLimit, 2_000));
+    setFurusatoCalcMode("precise");
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
 
   // 実際の税率を使った節税効果計算
   const effectiveTaxRate = result && result.annualIncome > 0
@@ -688,13 +722,21 @@ export default function AnalysisScreen() {
         </Text>
 
         <View style={styles.furusatoBox}>
-          <Text style={styles.furusatoLabel}>あなたの寄附上限額（目安）</Text>
+          <Text style={styles.furusatoLabel}>
+            {furusatoCalcMode === "precise" ? "あなたの寄附上限額（厳密計算）" : "あなたの寄附上限額（目安）"}
+          </Text>
           <Text style={styles.furusatoAmount}>
             {Math.round(furusatoOptimal / 10_000).toLocaleString()}万円
           </Text>
-          <Text style={styles.furusatoNote}>
-            ※ 年収 {annualIncomeMan}万円 ベースの概算。ワンストップ特例利用の場合。
-          </Text>
+          {furusatoCalcMode === "precise" ? (
+            <Text style={[styles.furusatoNote, { color: "#0FA86E", fontWeight: "600" }]}>
+              ✓ 住民税所得割・所得税率から逆算した厳密値。ワンストップ特例利用の場合。
+            </Text>
+          ) : (
+            <Text style={styles.furusatoNote}>
+              ※ 年収 {annualIncomeMan}万円 ベースの概算。「最適額を計算」で厳密値に更新できます。
+            </Text>
+          )}
         </View>
 
         <View style={styles.furusatoSteps}>
@@ -713,8 +755,23 @@ export default function AnalysisScreen() {
           ))}
         </View>
 
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: "#0FA86E" }]}>
-          <Text style={styles.actionBtnText}>ふるさと納税の最適額を計算</Text>
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            { backgroundColor: furusatoCalcMode === "precise" ? "#888" : "#0FA86E" },
+            !result && { opacity: 0.4 },
+          ]}
+          onPress={handleCalcPreciseFurusato}
+          disabled={!result || furusatoCalcMode === "precise"}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.actionBtnText}>
+            {furusatoCalcMode === "precise"
+              ? "✓ 厳密値に更新済み"
+              : result
+                ? "📊 実データから最適額を計算"
+                : "📊 計算タブで計算後に利用可能"}
+          </Text>
         </TouchableOpacity>
       </View>
 

@@ -172,6 +172,13 @@ export default function SettingsScreen() {
   const [housingLoanBalance, setHousingLoanBalance] = useState("");
   const [lifeInsurance, setLifeInsurance] = useState("");
   const [medicalExpenses, setMedicalExpenses] = useState("");
+  // 社会保険料算出パターン
+  const [socialInsuranceMode, setSocialInsuranceMode] = useState<"auto" | "hyojun" | "actual" | "manual">("auto");
+  const [hyojunHoshu, setHyojunHoshu] = useState("");
+  const [actualAprilSalary, setActualAprilSalary] = useState("");
+  const [actualMaySalary, setActualMaySalary] = useState("");
+  const [actualJuneSalary, setActualJuneSalary] = useState("");
+  const [manualSocialInsurance, setManualSocialInsurance] = useState("");
 
   const styles = createStyles(colors);
 
@@ -215,6 +222,12 @@ export default function SettingsScreen() {
         setHousingLoanBalance(data.housingLoanBalance ?? "");
         setLifeInsurance(data.lifeInsurance ?? "");
         setMedicalExpenses(data.medicalExpenses ?? "");
+        setSocialInsuranceMode(data.socialInsuranceMode ?? "auto");
+        setHyojunHoshu(data.hyojunHoshu ?? "");
+        setActualAprilSalary(data.actualAprilSalary ?? "");
+        setActualMaySalary(data.actualMaySalary ?? "");
+        setActualJuneSalary(data.actualJuneSalary ?? "");
+        setManualSocialInsurance(data.manualSocialInsurance ?? "");
       } else if (settings) {
         // profileStoreにない場合はSupabaseから
         if (settings.annual_income) setAnnualIncome(String(settings.annual_income));
@@ -356,6 +369,12 @@ export default function SettingsScreen() {
       lifeInsurance,
       medicalExpenses,
       workPrefecture,
+      socialInsuranceMode,
+      hyojunHoshu,
+      actualAprilSalary,
+      actualMaySalary,
+      actualJuneSalary,
+      manualSocialInsurance,
       savedAt: new Date().toISOString(),
     });
 
@@ -839,6 +858,134 @@ export default function SettingsScreen() {
               <Text style={styles.inputUnit}>円</Text>
             </View>
             <Text style={styles.fieldNote}>10万円超の部分が医療費控除として所得控除されます（上限200万円）</Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* 社会保険料算出パターン */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>社会保険料の算出方法</Text>
+            <Text style={styles.fieldNote}>詳細計算時に使用する社会保険料の算出方法を選択してください</Text>
+            <View style={styles.siModeContainer}>
+              {([
+                { key: "auto", label: "① 給与からの自動推定", desc: "年収から標準報酬月額を推定して算出" },
+                { key: "hyojun", label: "② 標準報酬月額の直接指定", desc: "実際の標準報酬月額を入力" },
+                { key: "actual", label: "③ 4〜6月の給与実績に基づく算定", desc: "4・5・6月の実績給与から定時決定をシミュレート" },
+                { key: "manual", label: "④ 保険料額の直接入力", desc: "年間社会保険料総額を直接入力" },
+              ] as const).map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.siModeItem,
+                    socialInsuranceMode === item.key && styles.siModeItemSelected,
+                    !isPremium && { opacity: 0.4 },
+                  ]}
+                  onPress={() => isPremium && setSocialInsuranceMode(item.key)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.siModeRadio}>
+                    {socialInsuranceMode === item.key && <View style={styles.siModeRadioDot} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.siModeLabel,
+                      socialInsuranceMode === item.key && styles.siModeLabelSelected,
+                    ]}>{item.label}</Text>
+                    <Text style={styles.siModeDesc}>{item.desc}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* モード2：標準報酬月額入力 */}
+            {socialInsuranceMode === "hyojun" && (
+              <View style={styles.siInputBlock}>
+                <Text style={styles.siInputLabel}>標準報酬月額</Text>
+                <View style={styles.inputRow}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="300000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={hyojunHoshu}
+                    onChangeText={setHyojunHoshu}
+                    editable={isPremium}
+                  />
+                  <Text style={styles.inputUnit}>円/月</Text>
+                </View>
+                <Text style={styles.fieldNote}>標準報酬月額表の等級に対応した保険料を自動計算します（健康保険・厚生年金・雇用保険）</Text>
+              </View>
+            )}
+
+            {/* モード3：4〜6月実績入力 */}
+            {socialInsuranceMode === "actual" && (
+              <View style={styles.siInputBlock}>
+                <Text style={styles.siInputLabel}>4・5・6月の実績給与（交通費含む）</Text>
+                <View style={[styles.inputRow, { marginBottom: 8 }]}>
+                  <Text style={[styles.inputUnit, { minWidth: 32 }]}>4月</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="300000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={actualAprilSalary}
+                    onChangeText={setActualAprilSalary}
+                    editable={isPremium}
+                  />
+                  <Text style={styles.inputUnit}>円</Text>
+                </View>
+                <View style={[styles.inputRow, { marginBottom: 8 }]}>
+                  <Text style={[styles.inputUnit, { minWidth: 32 }]}>5月</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="300000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={actualMaySalary}
+                    onChangeText={setActualMaySalary}
+                    editable={isPremium}
+                  />
+                  <Text style={styles.inputUnit}>円</Text>
+                </View>
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputUnit, { minWidth: 32 }]}>6月</Text>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="300000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={actualJuneSalary}
+                    onChangeText={setActualJuneSalary}
+                    editable={isPremium}
+                  />
+                  <Text style={styles.inputUnit}>円</Text>
+                </View>
+                {actualAprilSalary && actualMaySalary && actualJuneSalary && (() => {
+                  const avg = (parseInt(actualAprilSalary || "0") + parseInt(actualMaySalary || "0") + parseInt(actualJuneSalary || "0")) / 3;
+                  return <Text style={styles.fieldNote}>平均報酬: {Math.round(avg).toLocaleString()}円 → 標準報酬月額表で等級を自動判定します</Text>;
+                })()}
+              </View>
+            )}
+
+            {/* モード4：直接入力 */}
+            {socialInsuranceMode === "manual" && (
+              <View style={styles.siInputBlock}>
+                <Text style={styles.siInputLabel}>社会保険料（年額）</Text>
+                <View style={styles.inputRow}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="600000"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="number-pad"
+                    value={manualSocialInsurance}
+                    onChangeText={setManualSocialInsurance}
+                    editable={isPremium}
+                  />
+                  <Text style={styles.inputUnit}>円/年</Text>
+                </View>
+                <Text style={styles.fieldNote}>健康保険料・厚生年金保険料・雇用保険料の合計年額を入力してください</Text>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity
@@ -1803,6 +1950,69 @@ function createStyles(colors: ReturnType<typeof useColors>) {
     },
     settingsToggleBtnTextActive: {
       color: "#FFFFFF",
+    },
+    // 社会保険料算出パターン
+    siModeContainer: {
+      marginTop: 12,
+      gap: 8,
+    },
+    siModeItem: {
+      flexDirection: "row" as const,
+      alignItems: "flex-start" as const,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      padding: 14,
+      gap: 12,
+    },
+    siModeItemSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + "12",
+    },
+    siModeRadio: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      marginTop: 2,
+    },
+    siModeRadioDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.primary,
+    },
+    siModeLabel: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      color: colors.foreground,
+      marginBottom: 2,
+    },
+    siModeLabelSelected: {
+      color: colors.primary,
+    },
+    siModeDesc: {
+      fontSize: 12,
+      color: colors.muted,
+      lineHeight: 17,
+    },
+    siInputBlock: {
+      marginTop: 16,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    siInputLabel: {
+      fontSize: 13,
+      fontWeight: "600" as const,
+      color: colors.foreground,
+      marginBottom: 10,
     },
   });
 }

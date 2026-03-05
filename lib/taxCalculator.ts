@@ -21,6 +21,13 @@ export interface TaxInput {
   housingLoanBalance?: number;    // 住宅ローン年末残高（円）
   lifeInsurancePremium?: number;  // 生命保険料（年間・円）
   medicalExpenses?: number;       // 医療費（年間・円）
+  // 社会保険料算出パターン
+  socialInsuranceMode?: "auto" | "hyojun" | "actual" | "manual";
+  hyojunHoshu?: number;           // 標準報酬月額（円）：モード2
+  actualAprilSalary?: number;     // 4月実績給与（円）：モード3
+  actualMaySalary?: number;       // 5月実績給与（円）：モード3
+  actualJuneSalary?: number;      // 6月実績給与（円）：モード3
+  manualSocialInsurance?: number; // 保険料直接入力（年額円）：モード4
 }
 
 export interface TaxResult {
@@ -260,9 +267,23 @@ export function calculateTax(input: TaxInput): TaxResult {
   const bonusPerPayment = monthlyIncome * 2;
   const bonusPayments = 2;
 
+  // ===== 社会保険料算出パターン =====
+  const siMode = input.socialInsuranceMode ?? "auto";
+
+  // 標準報酬月額の決定（モード1：自動推定、モード2：直接指定、モード3：4〜6月実績）
+  let effectiveMonthlyIncome = monthlyIncome;
+  if (siMode === "hyojun" && input.hyojunHoshu && input.hyojunHoshu > 0) {
+    effectiveMonthlyIncome = input.hyojunHoshu;
+  } else if (siMode === "actual" &&
+    input.actualAprilSalary && input.actualMaySalary && input.actualJuneSalary) {
+    // 4・5・6月の平均から標準報酬月額を判定
+    const avgSalary = (input.actualAprilSalary + input.actualMaySalary + input.actualJuneSalary) / 3;
+    effectiveMonthlyIncome = avgSalary;
+  }
+
   // ===== 標準報酬月額（月給分）=====
-  const hyojunHoshuKenpo = getHyojunHoshu(monthlyIncome);
-  const hyojunHoshuNenkin = getNenkinHyojunHoshu(monthlyIncome);
+  const hyojunHoshuKenpo = getHyojunHoshu(effectiveMonthlyIncome);
+  const hyojunHoshuNenkin = getNenkinHyojunHoshu(effectiveMonthlyIncome);
 
   // ===== 標準賞与額（賞与分）=====
   const hyojunShoyoKenpo = getHyojunShoyo(bonusPerPayment, "kenpo");
@@ -300,9 +321,15 @@ export function calculateTax(input: TaxInput): TaxResult {
   const annualEmployment = Math.floor(annualIncome * (tc.koyoHokenRate / 100));
 
   // ===== 社会保険料合計 =====
-  const totalSocialInsurance =
-    annualHealthInsurance + annualNursingInsurance + annualKodomoKosodate +
-    annualPension + annualEmployment;
+  let totalSocialInsurance: number;
+  if (siMode === "manual" && input.manualSocialInsurance && input.manualSocialInsurance > 0) {
+    // モード4：直接入力値を使用
+    totalSocialInsurance = input.manualSocialInsurance;
+  } else {
+    totalSocialInsurance =
+      annualHealthInsurance + annualNursingInsurance + annualKodomoKosodate +
+      annualPension + annualEmployment;
+  }
 
   // ===== 所得税の計算 =====
   // 給与所得（年度別給与所得控除を適用）

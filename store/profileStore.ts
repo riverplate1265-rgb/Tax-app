@@ -47,6 +47,13 @@ export interface AnnualData {
   lifeInsurance: string;         // 生命保険料（円）
   medicalExpenses: string;       // 医療費年間見込額（円）
   workPrefecture: string;        // 勤務都道府県（年次データ側）
+  // 社会保険料算出パターン
+  socialInsuranceMode: "auto" | "hyojun" | "actual" | "manual"; // 算出モード
+  hyojunHoshu: string;            // 標準報酬月額（円）：モード2
+  actualAprilSalary: string;      // 4月実績給与（円）：モード3
+  actualMaySalary: string;        // 5月実績給与（円）：モード3
+  actualJuneSalary: string;       // 6月実績給与（円）：モード3
+  manualSocialInsurance: string;  // 保険料直接入力（年額円）：モード4
   savedAt: string;
 }
 

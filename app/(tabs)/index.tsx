@@ -74,6 +74,13 @@ export default function HomeScreen() {
   const [housingLoanBalance, setHousingLoanBalance] = useState("");
   const [lifeInsurancePremium, setLifeInsurancePremium] = useState("");
   const [medicalExpenses, setMedicalExpenses] = useState("");
+  // 社会保険料算出パターン
+  const [socialInsuranceMode, setSocialInsuranceMode] = useState<"auto" | "hyojun" | "actual" | "manual">("auto");
+  const [hyojunHoshu, setHyojunHoshu] = useState("");
+  const [actualAprilSalary, setActualAprilSalary] = useState("");
+  const [actualMaySalary, setActualMaySalary] = useState("");
+  const [actualJuneSalary, setActualJuneSalary] = useState("");
+  const [manualSocialInsurance, setManualSocialInsurance] = useState("");
 
   // 障害者情報（設定タブから取得）
   const [disabilityType, setDisabilityType] = useState<DisabilityType>("none");
@@ -193,6 +200,13 @@ export default function HomeScreen() {
     if (data.medicalExpenses) {
       setMedicalExpenses(data.medicalExpenses);
     }
+    // 社会保険料算出パターン
+    if (data.socialInsuranceMode) setSocialInsuranceMode(data.socialInsuranceMode);
+    if (data.hyojunHoshu) setHyojunHoshu(data.hyojunHoshu);
+    if (data.actualAprilSalary) setActualAprilSalary(data.actualAprilSalary);
+    if (data.actualMaySalary) setActualMaySalary(data.actualMaySalary);
+    if (data.actualJuneSalary) setActualJuneSalary(data.actualJuneSalary);
+    if (data.manualSocialInsurance) setManualSocialInsurance(data.manualSocialInsurance);
   };
 
    // 起動時にプロフィールStoreから読み込む
@@ -350,6 +364,13 @@ export default function HomeScreen() {
         housingLoanBalance: housingLoanBalance ? parseInt(housingLoanBalance, 10) : undefined,
         lifeInsurancePremium: lifeInsurancePremium ? parseInt(lifeInsurancePremium, 10) : undefined,
         medicalExpenses: medicalExpenses ? parseInt(medicalExpenses, 10) : undefined,
+        // 社会保険料算出パターン
+        socialInsuranceMode,
+        hyojunHoshu: hyojunHoshu ? parseInt(hyojunHoshu, 10) : undefined,
+        actualAprilSalary: actualAprilSalary ? parseInt(actualAprilSalary, 10) : undefined,
+        actualMaySalary: actualMaySalary ? parseInt(actualMaySalary, 10) : undefined,
+        actualJuneSalary: actualJuneSalary ? parseInt(actualJuneSalary, 10) : undefined,
+        manualSocialInsurance: manualSocialInsurance ? parseInt(manualSocialInsurance, 10) : undefined,
       }),
     };
 

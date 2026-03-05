@@ -476,11 +476,23 @@ export default function HomeScreen() {
             <View style={styles.detailBanner}>
               <Text style={styles.detailBannerIcon}>✨</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.detailBannerTitle}>詳細モード：控除を反映</Text>
-                <Text style={styles.detailBannerText}>
-                  iDeCo・ふるさと納税・住宅ローン控除を加味した精密計算を行います。
-                </Text>
+                <Text style={styles.detailBannerTitle}>詳細モード：精密計算ができるようになります。</Text>
               </View>
+            </View>
+          )}
+
+          {/* 年次データ選択プルダウン（詳細モード時のみ表示） */}
+          {mode === "detailed" && savedYears.length > 0 && (
+            <View style={[styles.card, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10 }]}>
+              <Text style={[styles.cardSectionTitle, { marginBottom: 0 }]}>対象年度</Text>
+              <TouchableOpacity
+                style={styles.yearSelector}
+                onPress={() => setShowYearModal(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.yearSelectorText}>{selectedYear}年</Text>
+                <Text style={styles.yearSelectorChevron}>▼</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -751,22 +763,11 @@ export default function HomeScreen() {
             <View style={styles.card}>
               <View style={styles.detailHeaderRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardSectionTitle}>控除の入力</Text>
+                  <Text style={styles.cardSectionTitle}>控除情報</Text>
                   <Text style={styles.cardSectionSubtitle}>
                     入力した控除を加味して手取りを精密計算します
                   </Text>
                 </View>
-                {/* 年次データ選択プルダウン */}
-                {savedYears.length > 0 && (
-                  <TouchableOpacity
-                    style={styles.yearSelector}
-                    onPress={() => setShowYearModal(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.yearSelectorText}>{selectedYear}年</Text>
-                    <Text style={styles.yearSelectorChevron}>▼</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
               {/* 年次データ反映バナー */}

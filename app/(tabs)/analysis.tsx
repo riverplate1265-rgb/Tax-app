@@ -14,7 +14,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { DonutChart } from "@/components/DonutChart";
-import { BarChart, HorizontalBar } from "@/components/BarChart";
+import { BarChart, HorizontalBar, LineChart } from "@/components/BarChart";
 import { useColors } from "@/hooks/use-colors";
 import { useCalculationResult } from "@/hooks/use-calculation-result";
 import {
@@ -104,15 +104,13 @@ function getPeerAverage(age: number): number {
 
 // 税務カレンダーデータ
 const TAX_CALENDAR = [
-  { month: 1, label: "1月", events: ["給与支払報告書提出"] },
   { month: 2, label: "2月", events: ["確定申告受付開始（2/17～）"] },
   { month: 3, label: "3月", events: ["確定申告期限（3/17）", "協会けんぽ保険料率改定"] },
   { month: 4, label: "4月", events: ["子ども・子育て支援金 徴収開始", "雇用保険料率改定"] },
   { month: 5, label: "5月", events: ["住民税決定通知書"] },
-  { month: 6, label: "6月", events: ["住民税 第1期納付", "住民税の新年度徴収開始"] },
-  { month: 8, label: "8月", events: ["住民税 第2期納付"] },
+  { month: 6, label: "6月", events: ["住民税の新年度征収開始"] },
   { month: 9, label: "9月", events: ["社会保険料の定時決定"] },
-  { month: 10, label: "10月", events: ["住民税 第3期納付"] },
+  { month: 10, label: "10月", events: ["社会保険料の106万円の壁撤廃", "厚生年金の上限引き上げ"] },
   { month: 11, label: "11月", events: ["年末調整書類提出"] },
   { month: 12, label: "12月", events: ["年末調整", "ふるさと納税の期限（12/31）"] },
 ];
@@ -159,9 +157,8 @@ export default function AnalysisScreen() {
 
   // リマインダー設定
   const [reminders, setReminders] = useState<ReminderSetting[]>([
-    { label: "確定申告期限（3/17）", enabled: true, timing: "1week" },
     { label: "確定申告受付開始（2/17～）", enabled: false, timing: "3days" },
-    { label: "住民税決定通知（5月）", enabled: true, timing: "3days" },
+    { label: "確定申告期限（3/17）", enabled: true, timing: "1week" },
     { label: "年末調整書類提出（11月）", enabled: false, timing: "1week" },
     { label: "ふるさと納税の期限（12/31）", enabled: false, timing: "1week" },
   ]);
@@ -318,31 +315,59 @@ export default function AnalysisScreen() {
           </View>
         </View>
 
-        {/* 右: 同世代比較 */}
-        <View style={[styles.card, styles.comparisonColCard]}>
-          <Text style={styles.cardTitle}>同世代比較</Text>
-          <Text style={styles.cardSubtitleSmall}>{ageGroup}の平均額面</Text>
-          <View style={styles.chartContainerSmall}>
-            <BarChart
-              data={peerData}
-              width={(SCREEN_WIDTH - 64) / 2 - 18}
-              height={130}
-              highlightIndex={peerData.findIndex((d) => d.color === "#1A6FD4")}
-              unit="万円"
-            />
-          </View>
-          <View style={styles.peerInsightBox}>
-            <Text style={styles.peerInsightText}>
-              平均{peerAverage}万円より
-            </Text>
-            <Text style={[
-              styles.peerInsightDiff,
-              { color: annualIncomeMan >= peerAverage ? "#2ECC71" : "#E05252" }
-            ]}>
-              {annualIncomeMan >= peerAverage ? "+" : ""}{annualIncomeMan - peerAverage}万円
-            </Text>
-          </View>
-        </View>
+        {/* 右: 手取りの推移（折れ線グラフ） */}
+        {(() => {
+          const sortedYears = Object.keys(annualDataMap)
+            .map(Number)
+            .sort((a, b) => a - b);
+          if (sortedYears.length < 2) {
+            return (
+              <View style={[styles.card, styles.comparisonColCard]}>
+                <Text style={styles.cardTitle}>手取りの推移</Text>
+                <Text style={styles.cardSubtitleSmall}>年次データが2年分以上あると表示されます</Text>
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 16 }}>
+                  <Text style={{ fontSize: 11, color: "#5E7491", textAlign: "center" }}>
+                    設定タブの「年次設定」に{"\n"}2年分以上入力すると{"\n"}推移グラフが表示されます
+                  </Text>
+                </View>
+              </View>
+            );
+          }
+          const trendData = sortedYears.map((year) => ({
+            label: `${year}`,
+            value: parseFloat(annualDataMap[year]?.annualIncome ?? "0"),
+          }));
+          const latestValue = trendData[trendData.length - 1]?.value ?? 0;
+          const firstValue = trendData[0]?.value ?? 0;
+          const diff = latestValue - firstValue;
+          return (
+            <View style={[styles.card, styles.comparisonColCard]}>
+              <Text style={styles.cardTitle}>手取りの推移</Text>
+              <Text style={styles.cardSubtitleSmall}>年次データから生成</Text>
+              <View style={styles.chartContainerSmall}>
+                <LineChart
+                  data={trendData}
+                  width={(SCREEN_WIDTH - 64) / 2 - 18}
+                  height={130}
+                  lineColor="#1A6FD4"
+                  dotColor="#1A6FD4"
+                  unit="万"
+                />
+              </View>
+              <View style={styles.peerInsightBox}>
+                <Text style={styles.peerInsightText}>
+                  {sortedYears[0]}年比
+                </Text>
+                <Text style={[
+                  styles.peerInsightDiff,
+                  { color: diff >= 0 ? "#2ECC71" : "#E05252" }
+                ]}>
+                  {diff >= 0 ? "+" : ""}{diff}万円
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
       </View>
 
       {/* 実質手取りカード */}
@@ -398,42 +423,6 @@ export default function AnalysisScreen() {
         </View>
       </View>
 
-      {/* 手取りの推移カード */}
-      {(() => {
-        const sortedYears = Object.keys(annualDataMap)
-          .map(Number)
-          .sort((a, b) => a - b);
-        if (sortedYears.length < 2) return null;
-        const trendData = sortedYears.map((year) => ({
-          label: `${year}`,
-          value: parseFloat(annualDataMap[year]?.annualIncome ?? "0"),
-          color: "#1A6FD4",
-        }));
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>手取りの推移</Text>
-            <Text style={styles.cardSubtitle}>
-              設定タブに入力した年次データから生成（年収ベース）
-            </Text>
-            <View style={styles.chartContainer}>
-              <BarChart
-                data={trendData}
-                width={CHART_WIDTH}
-                height={160}
-                highlightIndex={trendData.length - 1}
-                unit="万円"
-              />
-            </View>
-            <View style={styles.insightBox}>
-              <Text style={styles.insightIcon}>📈</Text>
-              <Text style={styles.insightText}>
-                {sortedYears[0]}年から{sortedYears[sortedYears.length - 1]}年の{sortedYears.length}年間の年収推移です。
-                最新年度の年収は{trendData[trendData.length - 1]?.value ?? 0}万円です。
-              </Text>
-            </View>
-          </View>
-        );
-      })()}
     </View>
   );
 
@@ -703,9 +692,7 @@ export default function AnalysisScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.actionBtn}>
-          <Text style={styles.actionBtnText}>iDeCoの詳細計算を見る</Text>
-        </TouchableOpacity>
+
       </View>
 
       <View style={styles.card}>

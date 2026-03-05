@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text } from "react-native";
-import Svg, { Rect, G, Text as SvgText } from "react-native-svg";
+import Svg, { Rect, G, Text as SvgText, Polyline, Circle, Line } from "react-native-svg";
 
 export interface BarChartData {
   label: string;
@@ -137,6 +137,143 @@ export function HorizontalBar({
           }}
         />
       </View>
+    </View>
+  );
+}
+
+/**
+ * 折れ線グラフ（手取り推移などに使用）
+ */
+export interface LineChartData {
+  label: string;
+  value: number;
+}
+
+interface LineChartProps {
+  data: LineChartData[];
+  width?: number;
+  height?: number;
+  lineColor?: string;
+  dotColor?: string;
+  unit?: string;
+}
+
+export function LineChart({
+  data,
+  width = 320,
+  height = 180,
+  lineColor = "#1A6FD4",
+  dotColor = "#1A6FD4",
+  unit = "万円",
+}: LineChartProps) {
+  if (!data || data.length === 0) return null;
+
+  const paddingLeft = 40;
+  const paddingRight = 16;
+  const paddingTop = 24;
+  const paddingBottom = 36;
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+
+  const values = data.map((d) => d.value);
+  const maxValue = Math.max(...values);
+  const minValue = Math.min(...values);
+  const range = maxValue - minValue || 1;
+
+  const getX = (index: number) =>
+    paddingLeft + (index / Math.max(data.length - 1, 1)) * chartWidth;
+  const getY = (value: number) =>
+    paddingTop + chartHeight - ((value - minValue) / range) * chartHeight;
+
+  const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(" ");
+
+  // Y軸のグリッド線（3本）
+  const gridValues = [
+    minValue,
+    Math.round((minValue + maxValue) / 2),
+    maxValue,
+  ];
+
+  return (
+    <View style={{ width, height }}>
+      <Svg width={width} height={height}>
+        {/* グリッド線 */}
+        {gridValues.map((v, i) => {
+          const y = getY(v);
+          return (
+            <G key={i}>
+              <Line
+                x1={paddingLeft}
+                y1={y}
+                x2={width - paddingRight}
+                y2={y}
+                stroke="#E0E8F0"
+                strokeWidth={1}
+                strokeDasharray="4,4"
+              />
+              <SvgText
+                x={paddingLeft - 4}
+                y={y + 4}
+                textAnchor="end"
+                fontSize={9}
+                fill="#5E7491"
+              >
+                {v}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {/* 折れ線 */}
+        <Polyline
+          points={points}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* ドットと値ラベル */}
+        {data.map((d, i) => {
+          const cx = getX(i);
+          const cy = getY(d.value);
+          const isLast = i === data.length - 1;
+          return (
+            <G key={i}>
+              <Circle
+                cx={cx}
+                cy={cy}
+                r={isLast ? 5 : 4}
+                fill={isLast ? dotColor : "#FFFFFF"}
+                stroke={dotColor}
+                strokeWidth={2}
+              />
+              {/* 値ラベル */}
+              <SvgText
+                x={cx}
+                y={cy - 10}
+                textAnchor="middle"
+                fontSize={9}
+                fill={isLast ? lineColor : "#5E7491"}
+                fontWeight={isLast ? "700" : "400"}
+              >
+                {d.value}{unit}
+              </SvgText>
+              {/* X軸ラベル */}
+              <SvgText
+                x={cx}
+                y={height - paddingBottom + 14}
+                textAnchor="middle"
+                fontSize={9}
+                fill="#5E7491"
+              >
+                {d.label}
+              </SvgText>
+            </G>
+          );
+        })}
+      </Svg>
     </View>
   );
 }

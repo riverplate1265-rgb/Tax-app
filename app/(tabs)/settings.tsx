@@ -468,13 +468,24 @@ export default function SettingsScreen() {
                 {isPremium ? "✨ プレミアム会員" : "フリープラン"}
               </Text>
             </View>
-            {!isPremium && (
+            {!isPremium ? (
               <TouchableOpacity
                 style={styles.upgradeBtn}
                 onPress={() => setShowPremiumModal(true)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.upgradeBtnText}>アップグレード</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.upgradeBtn, { backgroundColor: '#E5E7EB' }]}
+                onPress={async () => {
+                  await savePremium(false);
+                  setIsPremium(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.upgradeBtnText, { color: '#6B7280' }]}>解約する</Text>
               </TouchableOpacity>
             )}
           </View>
